@@ -1,0 +1,939 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+model Branch {
+  id               String            @id @default(cuid())
+  organizationId   String            @map("organization_id")
+  name             String
+  labelColor       String            @default("#CDE9EC") @map("label_color")
+  phone            String?
+  address          String?
+  openingHours     Json?             @map("opening_hours")
+  archivedAt       DateTime?         @map("archived_at")
+  createdAt        DateTime          @default(now()) @map("created_at")
+  organization     Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  members          BranchMember[]
+  patients         Patient[]
+  treatments       Treatment[]
+  refillCycles     RefillCycle[]
+  deliveries       Delivery[]
+  tasks            Task[]
+  messageTemplates MessageTemplate[]
+  stockMarks       MedicationStockMark[]
+  incidents        Incident[]
+  outboxMessages   OutboxMessage[]
+  transfersFrom    PatientTransfer[]     @relation("PatientTransferFromBranch")
+  transfersTo      PatientTransfer[]     @relation("PatientTransferToBranch")
+
+  @@unique([organizationId, id])
+  @@index([organizationId])
+  @@map("branches")
+}
+
+model BranchMember {
+  organizationId String @map("organization_id")
+  branchId       String @map("branch_id")
+  userId         String @map("user_id")
+  branch         Branch @relation(fields: [organizationId, branchId], references: [organizationId, id], onDelete: Cascade)
+  user           User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([organizationId, branchId, userId])
+  @@index([organizationId])
+  @@map("branch_members")
+}
+
+model Setting {
+  id                         String       @id @default(cuid())
+  organizationId             String       @map("organization_id")
+  branchId                   String?      @map("branch_id")
+  upcomingDays               Int          @default(7) @map("upcoming_days")
+  dueSoonDays                Int          @default(3) @map("due_soon_days")
+  noticeLeadDays              Int          @default(5) @map("notice_lead_days")
+  maxNoticeAttempts          Int          @default(3) @map("max_notice_attempts")
+  retryAfterHours            Int          @default(24) @map("retry_after_hours")
+  prescriptionWarningDays    Int          @default(15) @map("prescription_warning_days")
+  automationEnabled          Boolean      @default(false) @map("automation_enabled")
+  automationDryRun           Boolean      @default(true) @map("automation_dry_run")
+  timezone                   String       @default("America/Santo_Domingo")
+  noticeWindowStart          String       @default("09:00") @map("notice_window_start")
+  noticeWindowEnd            String       @default("18:00") @map("notice_window_end")
+  autoCallTaskWithoutConsent Boolean      @default(false) @map("auto_call_task_without_consent")
+  defaultCountryCode         String       @default("DO") @map("default_country_code")
+  organization                Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@unique([organizationId, branchId])
+  @@index([organizationId])
+  @@map("settings")
+}
+
+model AuditLog {
+  id             String       @id @default(cuid())
+  organizationId String       @map("organization_id")
+  actorId        String?      @map("actor_id")
+  action         String
+  subjectId      String?      @map("subject_id")
+  metadata       Json         @default("{}")
+  createdAt      DateTime     @default(now()) @map("created_at")
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId, createdAt])
+  @@map("audit_log")
+}
+
+model Patient {
+  id                String             @id @default(cuid())
+  organizationId    String             @map("organization_id")
+  primaryBranchId   String             @map("primary_branch_id")
+  fullName          String             @map("full_name")
+  documentId        String?            @map("document_id")
+  birthDate         DateTime?          @map("birth_date") @db.Date
+  phone             String?
+  phoneHasWhatsapp  Boolean            @default(false) @map("phone_has_whatsapp")
+  email             String?
+  address           String?
+  zone              String?
+  preferredChannel  ContactChannel     @default(whatsapp) @map("preferred_channel")
+  reminderConsent   Boolean            @default(false) @map("reminder_consent")
+  reminderConsentAt DateTime?          @map("reminder_consent_at")
+  careNotes         String?            @map("care_notes") @db.Text
+  responsibleUserId String?            @map("responsible_user_id")
+  createdBy         String             @map("created_by")
+  createdAt         DateTime           @default(now()) @map("created_at")
+  archivedAt        DateTime?          @map("archived_at")
+  primaryBranch     Branch             @relation(fields: [organizationId, primaryBranchId], references: [organizationId, id])
+  responsibleUser   User?              @relation("PatientResponsible", fields: [responsibleUserId], references: [id], onDelete: SetNull)
+  creator           User               @relation("PatientCreator", fields: [createdBy], references: [id], onDelete: Restrict)
+  caregivers        PatientCaregiver[]
+  consents          PatientConsent[]
+  activities        Activity[]
+  treatments        Treatment[]
+  tasks             Task[]
+  incidents         Incident[]
+  outboxMessages    OutboxMessage[]
+  notices           Notice[]
+  transfers         PatientTransfer[]
+
+  @@unique([organizationId, id])
+  @@index([organizationId, documentId])
+  @@index([organizationId, phone])
+  @@index([organizationId, primaryBranchId])
+  @@index([organizationId, responsibleUserId])
+  @@index([fullName(ops: raw("gin_trgm_ops"))], type: Gin, map: "patients_full_name_trgm_idx")
+  @@map("patients")
+}
+
+enum ContactChannel {
+  whatsapp
+  call
+  sms
+}
+
+enum OrganizationStatus {
+  active
+  inactive
+
+  @@map("organization_status")
+}
+
+enum ActivityType {
+  note
+  call
+  patient_created
+  patient_updated
+  patient_archived
+  patient_restored
+  consent_recorded
+  treatment_created
+  treatment_updated
+  treatment_paused
+  treatment_finished
+  treatment_resumed
+  coverage_adjusted
+  prescription_renewed
+  delivery
+  notice
+  task
+  cycle_moved
+  incident
+  transfer
+}
+
+model PatientCaregiver {
+  id             String  @id @default(cuid())
+  organizationId String  @map("organization_id")
+  patientId      String  @map("patient_id")
+  fullName       String  @map("full_name")
+  phone          String
+  relationship   String
+  isPrimary      Boolean @default(false) @map("is_primary")
+  patient        Patient @relation(fields: [organizationId, patientId], references: [organizationId, id], onDelete: Cascade)
+
+  @@unique([organizationId, id])
+  @@index([organizationId, patientId])
+  @@map("patient_caregivers")
+}
+
+model PatientConsent {
+  id             String         @id @default(cuid())
+  organizationId String         @map("organization_id")
+  patientId      String         @map("patient_id")
+  granted        Boolean
+  channel        ContactChannel
+  evidence       String?        @db.Text
+  recordedBy     String         @map("recorded_by")
+  recordedAt     DateTime       @default(now()) @map("recorded_at")
+  patient        Patient        @relation(fields: [organizationId, patientId], references: [organizationId, id], onDelete: Cascade)
+  recorder       User           @relation(fields: [recordedBy], references: [id], onDelete: Restrict)
+
+  @@unique([organizationId, id])
+  @@index([organizationId, patientId, recordedAt])
+  @@map("patient_consents")
+}
+
+model Medication {
+  id               String       @id @default(cuid())
+  organizationId   String       @map("organization_id")
+  brandName        String?      @map("brand_name")
+  genericName      String?      @map("generic_name")
+  activeIngredient String?      @map("active_ingredient")
+  presentation     String
+  doseUnit         String       @default("tablet") @map("dose_unit")
+  unitsPerPackage  Decimal?     @map("units_per_package") @db.Decimal(8, 2)
+  createdAt        DateTime     @default(now()) @map("created_at")
+  updatedAt        DateTime     @updatedAt @map("updated_at")
+  archivedAt       DateTime?    @map("archived_at")
+  organization     Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  treatments       Treatment[]
+  stockMarks       MedicationStockMark[]
+
+  @@unique([organizationId, id])
+  @@index([organizationId])
+  @@index([brandName(ops: raw("gin_trgm_ops"))], type: Gin, map: "medications_brand_name_trgm_idx")
+  @@index([genericName(ops: raw("gin_trgm_ops"))], type: Gin, map: "medications_generic_name_trgm_idx")
+  @@index([activeIngredient(ops: raw("gin_trgm_ops"))], type: Gin, map: "medications_active_ingredient_trgm_idx")
+  @@map("medications")
+}
+
+enum TreatmentStatus {
+  active
+  paused
+  finished
+}
+
+enum RefillCycleStatus {
+  to_notify
+  notified
+  confirmed
+  prepared
+  delivered
+  not_picked_up
+  cancelled
+}
+
+enum PickedUpBy {
+  patient
+  caregiver
+  home_delivery
+  other
+}
+
+enum TaskType {
+  call
+  renew_prescription
+  prepare_delivery
+  other
+}
+
+enum TaskStatus {
+  open
+  done
+  cancelled
+}
+
+enum MessageChannel {
+  whatsapp
+  call
+}
+
+model Treatment {
+  id                       String          @id @default(cuid())
+  organizationId           String          @map("organization_id")
+  patientId                String          @map("patient_id")
+  medicationId             String          @map("medication_id")
+  branchId                 String          @map("branch_id")
+  responsibleUserId        String?         @map("responsible_user_id")
+  dosePerIntake            Decimal         @map("dose_per_intake") @db.Decimal(8, 3)
+  intakesPerDay            Decimal         @map("intakes_per_day") @db.Decimal(6, 3)
+  quantityPerCycle         Decimal         @map("quantity_per_cycle") @db.Decimal(10, 2)
+  startDate                DateTime        @map("start_date") @db.Date
+  endDate                  DateTime?       @map("end_date") @db.Date
+  prescriberName           String?         @map("prescriber_name")
+  prescriptionExpiresOn    DateTime?       @map("prescription_expires_on") @db.Date
+  status                   TreatmentStatus @default(active)
+  statusReason             String?         @map("status_reason") @db.Text
+  statusChangedAt          DateTime?       @map("status_changed_at")
+  lastDeliveryOn           DateTime?       @map("last_delivery_on") @db.Date
+  coverageEndOn            DateTime?       @map("coverage_end_on") @db.Date
+  coverageManuallyAdjusted Boolean         @default(false) @map("coverage_manually_adjusted")
+  coverageAdjustReason     String?         @map("coverage_adjust_reason") @db.Text
+  notes                    String?         @db.Text
+  createdAt                DateTime        @default(now()) @map("created_at")
+  updatedAt                DateTime        @updatedAt @map("updated_at")
+  organization             Organization    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  patient                  Patient         @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  medication               Medication      @relation(fields: [medicationId], references: [id], onDelete: Restrict)
+  branch                   Branch          @relation(fields: [branchId], references: [id], onDelete: Restrict)
+  responsibleUser          User?           @relation("TreatmentResponsible", fields: [responsibleUserId], references: [id], onDelete: SetNull)
+  cycles                   RefillCycle[]
+  deliveries               Delivery[]
+  activities               Activity[]
+  tasks                    Task[]
+  incidents                Incident[]
+  outboxMessages           OutboxMessage[]
+  transferLines            PatientTransferTreatment[]
+
+  @@unique([organizationId, id])
+  @@index([organizationId, patientId])
+  @@index([organizationId, branchId])
+  @@index([organizationId, status])
+  @@index([organizationId, responsibleUserId])
+  @@index([organizationId, coverageEndOn])
+  @@index([organizationId, branchId, coverageEndOn])
+  @@index([organizationId, prescriptionExpiresOn])
+  @@map("treatments")
+}
+
+model RefillCycle {
+  id                String            @id @default(cuid())
+  organizationId    String            @map("organization_id")
+  treatmentId       String            @map("treatment_id")
+  branchId          String            @map("branch_id")
+  status            RefillCycleStatus @default(to_notify)
+  expectedOn        DateTime          @map("expected_on") @db.Date
+  expectedQuantity  Decimal           @map("expected_quantity") @db.Decimal(10, 2)
+  suggestedNoticeOn DateTime?         @map("suggested_notice_on") @db.Date
+  boardPosition     Float?            @map("board_position") @db.DoublePrecision
+  version           Int               @default(1)
+  noticeAttempts    Int               @default(0) @map("notice_attempts")
+  closedAt          DateTime?         @map("closed_at")
+  createdAt         DateTime          @default(now()) @map("created_at")
+  updatedAt         DateTime          @updatedAt @map("updated_at")
+  organization      Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  treatment         Treatment         @relation(fields: [treatmentId], references: [id], onDelete: Cascade)
+  branch            Branch            @relation(fields: [branchId], references: [id], onDelete: Restrict)
+  deliveries        Delivery[]
+  activities        Activity[]
+  tasks             Task[]
+  incidents         Incident[]
+  outboxMessages    OutboxMessage[]
+  notices           Notice[]
+
+  @@unique([organizationId, id])
+  @@index([organizationId, treatmentId, status])
+  @@index([organizationId, expectedOn])
+  @@index([organizationId, branchId])
+  @@index([organizationId, branchId, status, closedAt])
+  @@index([organizationId, branchId, status, boardPosition])
+  @@map("refill_cycles")
+}
+
+enum OutboxStatus {
+  pending
+  sending
+  sent
+  failed
+  cancelled
+  dry_run
+}
+
+/**
+ * One automatic WhatsApp/call notice queued for a cycle. `dedupeKey` makes
+ * sending the same attempt for the same cycle on the same local day
+ * impossible, even if the scheduler runs twice. Claimed for sending with
+ * `FOR UPDATE SKIP LOCKED` so two worker replicas never send the same row.
+ */
+model OutboxMessage {
+  id                String        @id @default(cuid())
+  organizationId    String        @map("organization_id")
+  branchId          String        @map("branch_id")
+  patientId         String        @map("patient_id")
+  treatmentId       String        @map("treatment_id")
+  cycleId           String        @map("cycle_id")
+  templateId        String        @map("template_id")
+  channel           MessageChannel
+  attemptNumber     Int           @map("attempt_number")
+  dedupeKey         String        @map("dedupe_key")
+  status            OutboxStatus  @default(pending)
+  attempts          Int           @default(0)
+  lastError         String?       @map("last_error") @db.Text
+  lockedAt          DateTime?     @map("locked_at")
+  providerMessageId String?       @map("provider_message_id")
+  scheduledFor      DateTime      @map("scheduled_for")
+  sentAt            DateTime?     @map("sent_at")
+  cancelledAt       DateTime?     @map("cancelled_at")
+  createdAt         DateTime      @default(now()) @map("created_at")
+  updatedAt         DateTime      @updatedAt @map("updated_at")
+  organization      Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  branch            Branch        @relation(fields: [organizationId, branchId], references: [organizationId, id], onDelete: Cascade)
+  patient           Patient       @relation(fields: [organizationId, patientId], references: [organizationId, id], onDelete: Cascade)
+  treatment         Treatment     @relation(fields: [organizationId, treatmentId], references: [organizationId, id], onDelete: Cascade)
+  cycle             RefillCycle   @relation(fields: [organizationId, cycleId], references: [organizationId, id], onDelete: Cascade)
+  template          MessageTemplate @relation(fields: [organizationId, templateId], references: [organizationId, id], onDelete: Restrict)
+  notice            Notice?
+
+  @@unique([organizationId, dedupeKey])
+  @@index([organizationId, status, scheduledFor])
+  @@index([organizationId, branchId, status])
+  @@index([organizationId, cycleId])
+  @@map("outbox_messages")
+}
+
+enum NoticeMode {
+  automatic
+  manual
+}
+
+enum NoticeStatus {
+  sent
+  delivered
+  read
+  failed
+  replied
+}
+
+/** Delivery-tracked record of one notice actually sent (or attempted). */
+model Notice {
+  id             String       @id @default(cuid())
+  organizationId String       @map("organization_id")
+  outboxId       String       @unique @map("outbox_id")
+  cycleId        String       @map("cycle_id")
+  patientId      String       @map("patient_id")
+  mode           NoticeMode
+  status         NoticeStatus @default(sent)
+  attemptNumber  Int          @map("attempt_number")
+  sentAt         DateTime     @default(now()) @map("sent_at")
+  deliveredAt    DateTime?    @map("delivered_at")
+  readAt         DateTime?    @map("read_at")
+  repliedAt      DateTime?    @map("replied_at")
+  failedAt       DateTime?    @map("failed_at")
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  outbox         OutboxMessage @relation(fields: [outboxId], references: [id], onDelete: Cascade)
+  cycle          RefillCycle  @relation(fields: [organizationId, cycleId], references: [organizationId, id], onDelete: Cascade)
+  patient        Patient      @relation(fields: [organizationId, patientId], references: [organizationId, id], onDelete: Cascade)
+
+  @@index([organizationId, cycleId])
+  @@index([organizationId, patientId, sentAt])
+  @@map("notices")
+}
+
+enum StockLevel {
+  in_stock
+  low
+  out_of_stock
+}
+
+model MedicationStockMark {
+  organizationId String      @map("organization_id")
+  branchId       String      @map("branch_id")
+  medicationId   String      @map("medication_id")
+  level          StockLevel
+  reviewedAt     DateTime    @default(now()) @map("reviewed_at")
+  reviewedBy     String      @map("reviewed_by")
+  branch         Branch      @relation(fields: [organizationId, branchId], references: [organizationId, id], onDelete: Cascade)
+  medication     Medication  @relation(fields: [organizationId, medicationId], references: [organizationId, id], onDelete: Cascade)
+  reviewer       User        @relation("StockMarkReviewer", fields: [reviewedBy], references: [id], onDelete: Restrict)
+
+  @@id([branchId, medicationId])
+  @@unique([organizationId, branchId, medicationId])
+  @@index([organizationId])
+  @@index([organizationId, medicationId])
+  @@map("medication_stock_marks")
+}
+
+enum IncidentType {
+  prescription_expired
+  out_of_stock
+  patient_no_response
+  patient_reported
+}
+
+enum IncidentStatus {
+  new
+  in_progress
+  resolved
+}
+
+model Incident {
+  id             String         @id @default(cuid())
+  organizationId String         @map("organization_id")
+  branchId       String         @map("branch_id")
+  patientId      String?        @map("patient_id")
+  treatmentId    String?        @map("treatment_id")
+  cycleId        String?        @map("cycle_id")
+  type           IncidentType
+  status         IncidentStatus @default(new)
+  assignedTo     String?        @map("assigned_to")
+  description    String         @db.Text
+  resolution     String?        @db.Text
+  createdBy      String         @map("created_by")
+  resolvedAt     DateTime?      @map("resolved_at")
+  boardPosition  Float?         @map("board_position") @db.DoublePrecision
+  createdAt      DateTime       @default(now()) @map("created_at")
+  updatedAt      DateTime       @updatedAt @map("updated_at")
+  branch         Branch         @relation(fields: [organizationId, branchId], references: [organizationId, id], onDelete: Cascade)
+  patient        Patient?       @relation(fields: [organizationId, patientId], references: [organizationId, id], onDelete: Cascade)
+  treatment      Treatment?     @relation(fields: [organizationId, treatmentId], references: [organizationId, id], onDelete: Cascade)
+  cycle          RefillCycle?   @relation(fields: [organizationId, cycleId], references: [organizationId, id], onDelete: Cascade)
+  assignee       User?          @relation("IncidentAssignee", fields: [assignedTo], references: [id], onDelete: SetNull)
+  creator        User           @relation("IncidentCreator", fields: [createdBy], references: [id], onDelete: Restrict)
+
+  @@unique([organizationId, id])
+  @@index([organizationId, branchId, status, boardPosition])
+  @@index([organizationId, patientId])
+  @@index([organizationId, treatmentId])
+  @@index([organizationId, assignedTo])
+  @@map("incidents")
+}
+
+model Delivery {
+  id              String       @id @default(cuid())
+  organizationId  String       @map("organization_id")
+  treatmentId     String       @map("treatment_id")
+  cycleId         String       @map("cycle_id")
+  branchId        String       @map("branch_id")
+  quantity        Decimal      @db.Decimal(10, 2)
+  deliveredOn     DateTime     @map("delivered_on") @db.Date
+  deliveredBy     String       @map("delivered_by")
+  pickedUpBy      PickedUpBy   @map("picked_up_by")
+  pickedUpByName  String?      @map("picked_up_by_name")
+  notes           String?      @db.Text
+  idempotencyKey  String?      @map("idempotency_key")
+  createdAt       DateTime     @default(now()) @map("created_at")
+  organization    Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  treatment       Treatment    @relation(fields: [treatmentId], references: [id], onDelete: Cascade)
+  cycle           RefillCycle  @relation(fields: [cycleId], references: [id], onDelete: Restrict)
+  branch          Branch       @relation(fields: [branchId], references: [id], onDelete: Restrict)
+  deliveredByUser User         @relation("DeliveryRecordedBy", fields: [deliveredBy], references: [id], onDelete: Restrict)
+
+  @@unique([organizationId, id])
+  @@unique([organizationId, idempotencyKey])
+  @@index([organizationId, treatmentId, deliveredOn])
+  @@index([organizationId, cycleId])
+  @@index([organizationId, branchId])
+  @@map("deliveries")
+}
+
+/**
+ * Moves a patient (and a chosen subset of their treatments/cycles) from one
+ * branch to another. Mirrors the idempotency pattern used by `Delivery`:
+ * `idempotencyKey` is unique per organization, the router (block 2) replays
+ * with 200 on an exact match and raises 409 IDEMPOTENCY_CONFLICT when the
+ * same key is reused for a different transfer.
+ */
+model PatientTransfer {
+  id              String                     @id @default(cuid())
+  organizationId  String                     @map("organization_id")
+  patientId       String                     @map("patient_id")
+  fromBranchId    String                     @map("from_branch_id")
+  toBranchId      String                     @map("to_branch_id")
+  reason          String                     @db.Text
+  treatmentsCount Int                        @map("treatments_count")
+  cyclesCount     Int                        @map("cycles_count")
+  createdByUserId String                     @map("created_by_user_id")
+  idempotencyKey  String?                    @map("idempotency_key")
+  createdAt       DateTime                   @default(now()) @map("created_at")
+  organization    Organization               @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  patient         Patient                    @relation(fields: [organizationId, patientId], references: [organizationId, id], onDelete: Cascade)
+  fromBranch      Branch                     @relation("PatientTransferFromBranch", fields: [organizationId, fromBranchId], references: [organizationId, id], onDelete: Restrict)
+  toBranch        Branch                     @relation("PatientTransferToBranch", fields: [organizationId, toBranchId], references: [organizationId, id], onDelete: Restrict)
+  createdByUser   User                       @relation("PatientTransferCreatedBy", fields: [createdByUserId], references: [id], onDelete: Restrict)
+  treatments      PatientTransferTreatment[]
+
+  @@unique([organizationId, id])
+  @@unique([organizationId, idempotencyKey])
+  @@index([organizationId, patientId])
+  @@index([organizationId, fromBranchId])
+  @@index([organizationId, toBranchId])
+  @@map("patient_transfers")
+}
+
+/**
+ * Detail line of one treatment moved as part of a PatientTransfer, with how
+ * many open cycles moved along with it. A dedicated table (rather than a
+ * Json column like `Activity.metadata`) was chosen because block 2 needs to
+ * query/join this list by treatmentId (e.g. to recompute coverage per
+ * branch), which a Json blob would not support with an index.
+ */
+model PatientTransferTreatment {
+  id                 String           @id @default(cuid())
+  organizationId     String           @map("organization_id")
+  patientTransferId  String           @map("patient_transfer_id")
+  treatmentId        String           @map("treatment_id")
+  cyclesMovedCount   Int              @map("cycles_moved_count")
+  patientTransfer     PatientTransfer @relation(fields: [patientTransferId], references: [id], onDelete: Cascade)
+  treatment           Treatment       @relation(fields: [treatmentId], references: [id], onDelete: Cascade)
+
+  @@unique([organizationId, id])
+  @@index([organizationId, patientTransferId])
+  @@index([organizationId, treatmentId])
+  @@map("patient_transfer_treatments")
+}
+
+model Activity {
+  id             String       @id @default(cuid())
+  organizationId String       @map("organization_id")
+  type           ActivityType
+  patientId      String       @map("patient_id")
+  treatmentId    String?      @map("treatment_id")
+  cycleId        String?      @map("cycle_id")
+  body           String       @db.Text
+  metadata       Json         @default("{}")
+  authorId       String       @map("author_id")
+  occurredAt     DateTime     @default(now()) @map("occurred_at")
+  patient        Patient      @relation(fields: [organizationId, patientId], references: [organizationId, id], onDelete: Cascade)
+  treatment      Treatment?   @relation(fields: [treatmentId], references: [id], onDelete: SetNull)
+  cycle          RefillCycle? @relation(fields: [cycleId], references: [id], onDelete: SetNull)
+  author         User         @relation(fields: [authorId], references: [id], onDelete: Restrict)
+
+  @@unique([organizationId, id])
+  @@index([organizationId, patientId, occurredAt])
+  @@index([organizationId, treatmentId, occurredAt])
+  @@index([organizationId, cycleId])
+  @@map("activities")
+}
+
+model SavedView {
+  id             String       @id @default(cuid())
+  organizationId String       @map("organization_id")
+  userId         String       @map("user_id")
+  entity         String
+  name           String
+  filters        Json         @default("{}")
+  columns        Json         @default("[]")
+  sort           Json         @default("{}")
+  isDefault      Boolean      @default(false) @map("is_default")
+  createdAt      DateTime     @default(now()) @map("created_at")
+  updatedAt      DateTime     @updatedAt @map("updated_at")
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  user           User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([organizationId, id])
+  @@unique([organizationId, userId, entity, name])
+  @@index([organizationId, userId, entity])
+  @@map("saved_views")
+}
+
+model Task {
+  id             String       @id @default(cuid())
+  organizationId String       @map("organization_id")
+  branchId       String?      @map("branch_id")
+  type           TaskType
+  title          String
+  description    String?      @db.Text
+  status         TaskStatus   @default(open)
+  dueAt          DateTime?    @map("due_at")
+  assignedTo     String?      @map("assigned_to")
+  patientId      String?      @map("patient_id")
+  treatmentId    String?      @map("treatment_id")
+  cycleId        String?      @map("cycle_id")
+  autoGenerated  Boolean      @default(false) @map("auto_generated")
+  completedAt    DateTime?    @map("completed_at")
+  completedBy    String?      @map("completed_by")
+  createdAt      DateTime     @default(now()) @map("created_at")
+  updatedAt      DateTime     @updatedAt @map("updated_at")
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  branch         Branch?      @relation(fields: [branchId], references: [id], onDelete: SetNull)
+  patient        Patient?     @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  treatment      Treatment?   @relation(fields: [treatmentId], references: [id], onDelete: SetNull)
+  cycle          RefillCycle? @relation(fields: [cycleId], references: [id], onDelete: SetNull)
+  assignee       User?        @relation("TaskAssignee", fields: [assignedTo], references: [id], onDelete: SetNull)
+  completer      User?        @relation("TaskCompletedBy", fields: [completedBy], references: [id], onDelete: SetNull)
+
+  @@unique([organizationId, id])
+  @@index([organizationId, branchId, status, dueAt])
+  @@index([organizationId, patientId])
+  @@index([organizationId, treatmentId])
+  @@index([organizationId, assignedTo, status])
+  @@map("tasks")
+}
+
+model MessageTemplate {
+  id             String         @id @default(cuid())
+  organizationId String         @map("organization_id")
+  branchId       String?        @map("branch_id")
+  channel        MessageChannel
+  kind           String         @default("refill_notice")
+  name           String
+  body           String         @db.Text
+  isActive       Boolean        @default(true) @map("is_active")
+  createdAt      DateTime       @default(now()) @map("created_at")
+  updatedAt      DateTime       @updatedAt @map("updated_at")
+  organization   Organization   @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  branch         Branch?        @relation(fields: [branchId], references: [id], onDelete: Cascade)
+  outboxMessages OutboxMessage[]
+
+  @@unique([organizationId, id])
+  @@index([organizationId, channel, kind, isActive])
+  @@index([organizationId, branchId])
+  @@map("message_templates")
+}
+
+model ImportJob {
+  id             String       @id @default(cuid())
+  organizationId String       @map("organization_id")
+  entity         String
+  filename       String
+  columnMapping  Json         @map("column_mapping")
+  totalRows      Int          @default(0) @map("total_rows")
+  importedRows   Int          @default(0) @map("imported_rows")
+  errorRows      Int          @default(0) @map("error_rows")
+  errors         Json         @default("[]")
+  createdBy      String       @map("created_by")
+  finishedAt     DateTime?    @map("finished_at")
+  createdAt      DateTime     @default(now()) @map("created_at")
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  creator        User         @relation(fields: [createdBy], references: [id], onDelete: Restrict)
+
+  @@unique([organizationId, id])
+  @@index([organizationId, createdAt])
+  @@map("import_jobs")
+}
+
+model User {
+  id                    String             @id
+  name                  String
+  email                 String
+  emailVerified         Boolean            @default(false)
+  image                 String?
+  username              String?            @unique
+  phone                 String?
+  passwordPinEncrypted  String?            @map("password_pin_encrypted")
+  passwordPinAttempts   Int                @default(0) @map("password_pin_attempts")
+  passwordPinLockedAt   DateTime?          @map("password_pin_locked_at")
+  passwordPinUpdatedAt  DateTime?          @map("password_pin_updated_at")
+  createdAt             DateTime           @default(now())
+  updatedAt             DateTime           @updatedAt
+  sessions              Session[]
+  accounts              Account[]
+  members               Member[]
+  invitations           Invitation[]
+  branchMemberships     BranchMember[]
+  responsiblePatients   Patient[]          @relation("PatientResponsible")
+  createdPatients       Patient[]          @relation("PatientCreator")
+  recordedConsents      PatientConsent[]
+  responsibleTreatments Treatment[]        @relation("TreatmentResponsible")
+  recordedDeliveries    Delivery[]         @relation("DeliveryRecordedBy")
+  activities            Activity[]
+  savedViews            SavedView[]
+  assignedTasks         Task[]             @relation("TaskAssignee")
+  completedTasks        Task[]             @relation("TaskCompletedBy")
+  importJobs            ImportJob[]
+  passwordResetPins     PasswordResetPin[]
+  stockMarksReviewed    MedicationStockMark[] @relation("StockMarkReviewer")
+  assignedIncidents     Incident[]        @relation("IncidentAssignee")
+  createdIncidents      Incident[]        @relation("IncidentCreator")
+  createdTransfers      PatientTransfer[] @relation("PatientTransferCreatedBy")
+
+  @@unique([email])
+  @@map("user")
+}
+
+model PasswordResetPin {
+  id                  String    @id @default(cuid())
+  userId              String    @map("user_id")
+  pinHash             String    @map("pin_hash")
+  expiresAt           DateTime  @map("expires_at")
+  attempts            Int       @default(0)
+  usedAt              DateTime? @map("used_at")
+  resetTokenHash      String?   @unique @map("reset_token_hash")
+  resetTokenExpiresAt DateTime? @map("reset_token_expires_at")
+  passwordChangedAt   DateTime? @map("password_changed_at")
+  createdAt           DateTime  @default(now()) @map("created_at")
+  user                User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, usedAt, expiresAt])
+  @@map("password_reset_pin")
+}
+
+model Session {
+  id                   String   @id
+  expiresAt            DateTime
+  token                String
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+  ipAddress            String?
+  userAgent            String?
+  userId               String
+  user                 User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  activeOrganizationId String?
+
+  @@unique([token])
+  @@index([userId])
+  @@map("session")
+}
+
+model Account {
+  id                    String    @id
+  accountId             String
+  providerId            String
+  userId                String
+  user                  User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  accessToken           String?
+  refreshToken          String?
+  idToken               String?
+  accessTokenExpiresAt  DateTime?
+  refreshTokenExpiresAt DateTime?
+  scope                 String?
+  password              String?
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
+
+  @@index([userId])
+  @@map("account")
+}
+
+model Verification {
+  id         String   @id
+  identifier String
+  value      String
+  expiresAt  DateTime
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@index([identifier])
+  @@map("verification")
+}
+
+model Organization {
+  id               String             @id
+  name             String
+  slug             String
+  logo             String?
+  createdAt        DateTime
+  metadata         String?
+  email            String?
+  status           OrganizationStatus @default(active)
+  pin              String?            @unique
+  domain           String?
+  updatedAt        DateTime           @default(now()) @updatedAt @map("updated_at")
+  members          Member[]
+  invitations      Invitation[]
+  branches         Branch[]
+  settings         Setting[]
+  auditLogs        AuditLog[]
+  medications      Medication[]
+  savedViews       SavedView[]
+  treatments       Treatment[]
+  refillCycles     RefillCycle[]
+  deliveries       Delivery[]
+  tasks            Task[]
+  messageTemplates MessageTemplate[]
+  importJobs       ImportJob[]
+  roles            Role[]
+  outboxMessages   OutboxMessage[]
+  notices          Notice[]
+  patientTransfers PatientTransfer[]
+
+  @@unique([slug])
+  @@map("organization")
+}
+
+model Member {
+  id             String       @id
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  userId         String
+  user           User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role           String       @default("member")
+  roleId         String?
+  roleRef        Role?        @relation(fields: [roleId], references: [id], onDelete: SetNull)
+  createdAt      DateTime
+
+  @@index([organizationId])
+  @@index([userId])
+  @@index([roleId])
+  @@map("member")
+}
+
+model Invitation {
+  id             String       @id
+  organizationId String
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  email          String
+  role           String?
+  status         String       @default("pending")
+  expiresAt      DateTime
+  createdAt      DateTime     @default(now())
+  inviterId      String
+  user           User         @relation(fields: [inviterId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId])
+  @@index([email])
+  @@map("invitation")
+}
+
+model MenuItem {
+  id         String         @id @default(cuid())
+  key        String         @unique
+  label      String
+  path       String?        @unique
+  icon       String         @default("circle")
+  order      Int            @default(0)
+  isActive   Boolean        @default(true) @map("is_active")
+  permission String?
+  parentId   String?        @map("parent_id")
+  createdAt  DateTime       @default(now()) @map("created_at")
+  updatedAt  DateTime       @updatedAt @map("updated_at")
+  parent     MenuItem?      @relation("MenuTree", fields: [parentId], references: [id], onDelete: Restrict)
+  children   MenuItem[]     @relation("MenuTree")
+  roleItems  RoleMenuItem[]
+
+  @@index([parentId])
+  @@map("menu_items")
+}
+
+model Role {
+  id             String         @id @default(cuid())
+  organizationId String         @map("organization_id")
+  key            String?
+  name           String
+  description    String?
+  baseRole       String         @map("base_role")
+  isSystem       Boolean        @default(false) @map("is_system")
+  isActive       Boolean        @default(true) @map("is_active")
+  createdAt      DateTime       @default(now()) @map("created_at")
+  updatedAt      DateTime       @updatedAt @map("updated_at")
+  organization   Organization   @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  menuItems      RoleMenuItem[]
+  members        Member[]
+
+  @@unique([organizationId, id])
+  @@unique([organizationId, name])
+  @@unique([organizationId, key])
+  @@index([organizationId])
+  @@map("roles")
+}
+
+model RoleMenuItem {
+  organizationId String   @map("organization_id")
+  roleId         String   @map("role_id")
+  menuItemId     String   @map("menu_item_id")
+  canView        Boolean  @default(true) @map("can_view")
+  canCreate      Boolean  @default(false) @map("can_create")
+  canEdit        Boolean  @default(false) @map("can_edit")
+  canDelete      Boolean  @default(false) @map("can_delete")
+  role           Role     @relation(fields: [organizationId, roleId], references: [organizationId, id], onDelete: Cascade)
+  menuItem       MenuItem @relation(fields: [menuItemId], references: [id], onDelete: Cascade)
+
+  @@id([roleId, menuItemId])
+  @@index([organizationId])
+  @@index([menuItemId])
+  @@map("role_menu_items")
+}

@@ -1,0 +1,58 @@
+{
+  "name": "max-care-api",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Secure multi-tenant Max Care API, phase 0",
+  "scripts": {
+    "dev": "tsx watch src/server.ts",
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:db": "tsx scripts/test-db.ts",
+    "test:isolation": "vitest run tests/isolation.test.ts",
+    "lint": "eslint .",
+    "format": "prettier --write .",
+    "db:generate": "prisma generate",
+    "db:migrate": "prisma migrate dev",
+    "db:deploy": "prisma migrate deploy",
+    "db:role": "tsx scripts/bootstrap-runtime-role.ts",
+    "db:grant": "tsx scripts/grant-runtime-role.ts",
+    "db:seed": "tsx prisma/seed.ts"
+  },
+  "dependencies": {
+    "@asteasolutions/zod-to-openapi": "7.3.4",
+    "@prisma/client": "^6.19.0",
+    "better-auth": "^1.4.0",
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.7",
+    "express": "^5.1.0",
+    "express-rate-limit": "^8.1.0",
+    "helmet": "^8.1.0",
+    "multer": "^2.5.0",
+    "pino": "^9.6.0",
+    "pino-http": "^10.4.0",
+    "zod": "^3.25.0"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.22.0",
+    "@types/cors": "^2.8.17",
+    "@types/express": "^5.0.1",
+    "@types/multer": "^1.4.13",
+    "@types/node": "^22.13.10",
+    "@types/supertest": "^6.0.2",
+    "eslint": "^9.22.0",
+    "globals": "^16.0.0",
+    "prettier": "^3.5.3",
+    "prisma": "^6.19.0",
+    "supertest": "^7.1.0",
+    "tsx": "^4.19.3",
+    "typescript": "^5.8.2",
+    "typescript-eslint": "^8.26.0",
+    "vitest": "^4.1.12"
+  },
+  "prisma": {
+    "seed": "tsx prisma/seed.ts"
+  }
+}

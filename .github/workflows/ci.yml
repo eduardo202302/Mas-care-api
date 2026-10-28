@@ -1,0 +1,42 @@
+name: CI
+on:
+  push:
+  pull_request:
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: maxcare
+          POSTGRES_PASSWORD: maxcare_dev
+          POSTGRES_DB: maxcare_test
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U maxcare -d maxcare_test"
+          --health-interval 5s --health-timeout 3s --health-retries 20
+    env:
+      DATABASE_URL: postgresql://maxcare_app:maxcare_app_dev_0123456789abcdef0123456789abcdef@localhost:5432/maxcare_test?schema=public
+      DIRECT_URL: postgresql://maxcare:maxcare_dev@localhost:5432/maxcare_test?schema=public
+      APP_DB_PASSWORD: maxcare_app_dev_0123456789abcdef0123456789abcdef
+      BETTER_AUTH_SECRET: ci-secret-with-at-least-thirty-two-characters
+      BETTER_AUTH_URL: http://localhost:3000
+      WEB_ORIGIN: http://localhost:5173
+      RUN_DB_TESTS: "1"
+      NODE_ENV: development
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22, cache: npm }
+      - run: npm ci --legacy-peer-deps
+      - run: npx prisma generate
+      - run: npm run db:role
+      - run: npm run db:deploy
+      - run: npm run db:grant
+      - run: npm run db:seed
+      - run: npm run typecheck
+      - run: npm run lint
+      - run: npm test
+      - run: npm run test:isolation
+      - run: docker build -t max-care-api:ci .

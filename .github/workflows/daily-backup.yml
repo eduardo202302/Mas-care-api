@@ -1,0 +1,35 @@
+name: Daily encrypted database backup
+on:
+  schedule:
+    - cron: '17 8 * * *'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  backup:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Install PostgreSQL and GPG tools
+        run: sudo apt-get update && sudo apt-get install --yes postgresql-client-16 gnupg
+      - name: Dump and encrypt Neon database
+        env:
+          NEON_DIRECT_URL: ${{ secrets.NEON_DIRECT_URL }}
+          BACKUP_GPG_PUBLIC_KEY: ${{ secrets.BACKUP_GPG_PUBLIC_KEY }}
+          BACKUP_GPG_RECIPIENT: ${{ secrets.BACKUP_GPG_RECIPIENT }}
+        run: |
+          set -euo pipefail
+          test -n "$NEON_DIRECT_URL"
+          test -n "$BACKUP_GPG_PUBLIC_KEY"
+          test -n "$BACKUP_GPG_RECIPIENT"
+          printf '%s' "$BACKUP_GPG_PUBLIC_KEY" | gpg --batch --import
+          stamp="$(date -u +%Y%m%dT%H%M%SZ)"
+          pg_dump --no-owner --no-acl --format=custom "$NEON_DIRECT_URL" \
+            | gpg --batch --yes --trust-model always --encrypt --recipient "$BACKUP_GPG_RECIPIENT" \
+              --output "maxcare-$stamp.dump.gpg"
+      - name: Retain encrypted backup artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: maxcare-database-backup-${{ github.run_id }}
+          path: maxcare-*.dump.gpg
+          if-no-files-found: error
+          retention-days: 30

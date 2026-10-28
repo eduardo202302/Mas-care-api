@@ -1,0 +1,3 @@
+import { z } from 'zod';
+export const branchInput = z.object({ name: z.string().trim().min(1).max(120), labelColor: z.string().regex(/^#[0-9a-fA-F]{6}$/).default('#CDE9EC'), phone: z.string().max(40).optional(), address: z.string().max(500).optional(), openingHours: z.record(z.string(), z.string()).optional() }).strict();
+export const branchSchema = z.object({ id: z.string(), organizationId: z.string(), name: z.string(), labelColor: z.string(), phone: z.string().nullable(), address: z.string().nullable(), openingHours: z.unknown().nullable(), archivedAt: z.date().nullable(), createdAt: z.date() });

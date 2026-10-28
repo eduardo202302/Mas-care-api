@@ -1,0 +1,8 @@
+{
+  "skillOverrides": {
+    "anthropic-skills:skill-creator": "name-only",
+    "anthropic-skills:built-in-browser": "name-only",
+    "anthropic-skills:chrome-browser": "off",
+    "anthropic-skills:computer-use": "off"
+  }
+}
