@@ -412,9 +412,15 @@ describe.skipIf(!enabled)('phase 1.3 daily operations', () => {
     }));
     await withTenant(context.organization.id, (tx) => tx.treatment.createMany({ data: rows }));
 
+    // ANALYZE needs table ownership: the runtime role skips it silently, so use the owner connection.
+    const admin = new PrismaClient({ datasources: { db: { url: process.env.DIRECT_URL ?? process.env.DATABASE_URL! } } });
+    try {
+      await admin.$executeRawUnsafe('ANALYZE treatments');
+    } finally {
+      await admin.$disconnect();
+    }
+
     const planRows = await withTenant(context.organization.id, async (tx) => {
-      // Refresh planner statistics after the bulk insert so the EXPLAIN is stable.
-      await tx.$executeRawUnsafe('ANALYZE treatments');
       return tx.$queryRaw<Array<Record<string, string>>>`
         EXPLAIN SELECT id FROM treatments
         WHERE organization_id = ${context.organization.id}
