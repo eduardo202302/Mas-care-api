@@ -30,7 +30,7 @@ const schema = z.object({
   SMTP_PORT: z.coerce.number().int().default(587),
   SMTP_USER: z.string().optional(),
   SMTP_PASS: z.string().optional(),
-  SMTP_FROM: z.string().default('Max Care <no-reply@localhost>'),
+  SMTP_FROM: z.string().default('MAS CARE <no-reply@localhost>'),
 });
 
 export const env = schema.parse(process.env);
