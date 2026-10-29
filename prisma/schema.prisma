@@ -247,6 +247,19 @@ enum RefillCycleStatus {
   cancelled
 }
 
+enum CyclePriority {
+  low
+  medium
+  high
+  urgent
+}
+
+enum CycleType {
+  regular
+  urgent
+  special
+}
+
 enum PickedUpBy {
   patient
   caregiver
@@ -337,6 +350,8 @@ model RefillCycle {
   noticeAttempts    Int               @default(0) @map("notice_attempts")
   closedAt          DateTime?         @map("closed_at")
   stageId           String?           @map("stage_id")
+  priority          CyclePriority?
+  type              CycleType?
   createdAt         DateTime          @default(now()) @map("created_at")
   updatedAt         DateTime          @updatedAt @map("updated_at")
   organization      Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)

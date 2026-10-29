@@ -40,9 +40,14 @@ export const cycleExpectedOnInput = z.object({
   expected_version: z.coerce.number().int().min(0),
 }).strict();
 
+export const cyclePriorities = ['low', 'medium', 'high', 'urgent'] as const;
+export const cycleTypes = ['regular', 'urgent', 'special'] as const;
+
 export const cycleCreateInput = z.object({
   treatment_id: z.string().min(1),
   status: z.enum(['to_notify', 'notified', 'confirmed', 'prepared']).default('to_notify'),
+  priority: z.enum(cyclePriorities).optional(),
+  type: z.enum(cycleTypes).optional(),
 }).strict();
 
 export const eligibleTreatmentsQuery = z.object({

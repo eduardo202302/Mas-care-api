@@ -128,6 +128,8 @@ export function presentCard(
     version: cycle.version,
     status: cycle.status,
     stage_id: cycle.stageId,
+    priority: cycle.priority,
+    type: cycle.type,
     treatment_custom_values: treatment.customValues,
     patient: { id: treatment.patient.id, nombre: treatment.patient.fullName, full_name: treatment.patient.fullName },
     medication: {

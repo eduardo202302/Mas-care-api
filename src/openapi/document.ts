@@ -165,6 +165,8 @@ const BoardCard = registry.register('BoardCard', z.object({
   treatment_id: z.string(),
   version: z.number().int(),
   status: z.enum(['to_notify', 'notified', 'confirmed', 'prepared', 'delivered', 'not_picked_up', 'cancelled']),
+  priority: z.enum(['low', 'medium', 'high', 'urgent']).nullable(),
+  type: z.enum(['regular', 'urgent', 'special']).nullable(),
   patient: z.object({ id: z.string(), nombre: z.string(), full_name: z.string() }),
   medication: z.object({ id: z.string(), nombre: z.string(), name: z.string(), presentacion: z.string(), presentation: z.string() }),
   expected_on: z.string(),

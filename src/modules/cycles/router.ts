@@ -322,7 +322,11 @@ cyclesRouter.get('/eligible-treatments', validateQuery(eligibleTreatmentsQuery),
           query.q ? { patient: { fullName: { contains: query.q, mode: 'insensitive' } } } : {},
         ],
       },
-      include: { patient: { select: { id: true, fullName: true } }, medication: { select: { genericName: true, brandName: true, presentation: true } } },
+      include: {
+        patient: { select: { id: true, fullName: true } },
+        medication: { select: { genericName: true, brandName: true, presentation: true } },
+        responsibleUser: { select: { id: true, name: true } },
+      },
       orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
       take: 50,
     });
@@ -331,6 +335,9 @@ cyclesRouter.get('/eligible-treatments', validateQuery(eligibleTreatmentsQuery),
       patient: { id: row.patient.id, name: row.patient.fullName },
       medication: `${row.medication.genericName ?? row.medication.brandName ?? row.medication.presentation} ${row.medication.presentation}`.trim(),
       branch_id: row.branchId,
+      quantity_per_cycle: row.quantityPerCycle.toString(),
+      coverage_end_on: row.coverageEndOn ? row.coverageEndOn.toISOString().slice(0, 10) : null,
+      responsible: row.responsibleUser ? { id: row.responsibleUser.id, name: row.responsibleUser.name } : null,
     }));
   });
   res.json({ data });
@@ -360,6 +367,8 @@ cyclesRouter.post('/', validateBody(cycleCreateInput), async (req, res) => {
         expectedOn,
         expectedQuantity: treatment.quantityPerCycle,
         suggestedNoticeOn: new Date(expectedOn.getTime() - settings.noticeLeadDays * 86_400_000),
+        priority: input.priority ?? null,
+        type: input.type ?? null,
       } as Prisma.RefillCycleUncheckedCreateInput,
     });
     await tx.activity.create({
