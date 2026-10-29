@@ -6,6 +6,7 @@ import { prisma, withTenant } from './prisma.js';
 import { accessControl, organizationRoles } from '../domain/auth-roles.js';
 import { record } from '../modules/audit/record.js';
 import { initializeOrganization } from '../modules/organizations/initialize.js';
+import { sendMail } from './mailer.js';
 
 async function recordSessionEvent(userId: string, action: 'auth.login' | 'auth.logout') {
   const memberships = await prisma.member.findMany({ where: { userId }, select: { organizationId: true } });
@@ -27,6 +28,16 @@ export const auth = betterAuth({
     },
   },
   emailAndPassword: { enabled: true },
+  // Sent explicitly after self-registration (register.ts), not on every sign-up: staff accounts are created already verified.
+  emailVerification: {
+    autoSignInAfterVerification: true,
+    sendVerificationEmail: async ({ user, url }) => {
+      await sendMail(user.email, 'Confirma tu correo en Max Care', `Hola ${user.name}, confirma tu correo con este enlace:
+${url}
+
+Si no creaste la cuenta, ignora este mensaje.`);
+    },
+  },
   advanced: {
     ...(env.COOKIE_DOMAIN ? { crossSubDomainCookies: { enabled: true, domain: env.COOKIE_DOMAIN } } : {}),
     defaultCookieAttributes: { httpOnly: true, sameSite: 'lax', secure: env.NODE_ENV === 'production' },

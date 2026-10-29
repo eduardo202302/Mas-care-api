@@ -17,8 +17,10 @@ export const menuSeeds: readonly MenuSeed[] = [
   { key: 'inicio', label: 'Panel del día', path: '/inicio', icon: 'activity', order: 10, permission: null, parentKey: null },
   { key: 'tablero', label: 'Tablero', path: '/tablero', icon: 'kanban', order: 15, permission: null, parentKey: null },
   { key: 'incidencias', label: 'Incidencias', path: '/incidencias', icon: 'triangle-alert', order: 16, permission: null, parentKey: null },
+  { key: 'avisos', label: 'Avisos', path: '/avisos', icon: 'send', order: 17, permission: 'outbox:view', parentKey: null },
   { key: 'tareas', label: 'Tareas', path: '/tareas', icon: 'list-checks', order: 20, permission: 'tasks:read', parentKey: null },
   { key: 'companias', label: 'Compañías', path: '/companias', icon: 'building-2', order: 30, permission: 'companies:write', parentKey: null },
+  { key: 'trabajos', label: 'Trabajos', path: '/trabajos', icon: 'activity', order: 31, permission: 'companies:write', parentKey: null },
   { key: 'pacientes', label: 'Pacientes', path: '/pacientes', icon: 'users', order: 40, permission: null, parentKey: null },
   { key: 'medicamentos', label: 'Medicamentos', path: '/medicamentos', icon: 'pill', order: 50, permission: null, parentKey: null },
   { key: 'ajustes', label: 'Ajustes', path: null, icon: 'settings-2', order: 60, permission: null, parentKey: null },
@@ -29,6 +31,8 @@ export const menuSeeds: readonly MenuSeed[] = [
   { key: 'roles', label: 'Roles', path: '/ajustes/roles', icon: 'shield-check', order: 65, permission: 'roles:read', parentKey: 'ajustes' },
   { key: 'menu', label: 'Menú', path: '/ajustes/menu', icon: 'list-tree', order: 66, permission: 'menu:write', parentKey: 'ajustes' },
   { key: 'existencias', label: 'Existencias', path: '/ajustes/existencias', icon: 'packages', order: 67, permission: 'stock:mark', parentKey: 'ajustes' },
+  { key: 'etapas', label: 'Etapas del tablero', path: '/ajustes/etapas', icon: 'kanban', order: 68, permission: 'settings:write', parentKey: 'ajustes' },
+  { key: 'propiedades', label: 'Propiedades', path: '/ajustes/propiedades', icon: 'list-tree', order: 69, permission: 'settings:write', parentKey: 'ajustes' },
 ];
 
 export const menuItemId = (key: string) => `menu_${key}`;
@@ -42,7 +46,7 @@ export type SystemRoleSeed = {
   flags: PermissionFlags;
 };
 
-const common = ['inicio', 'tablero', 'incidencias', 'tareas', 'pacientes', 'medicamentos', 'ajustes', 'sucursales', 'usuarios', 'plantillas', 'umbrales', 'existencias'] as const;
+const common = ['inicio', 'tablero', 'incidencias', 'avisos', 'tareas', 'pacientes', 'medicamentos', 'ajustes', 'sucursales', 'usuarios', 'plantillas', 'umbrales', 'existencias'] as const;
 
 export const systemRoleSeeds: readonly SystemRoleSeed[] = [
   { key: 'owner', name: 'Propietario', description: 'Acceso total a la organización.', menuKeys: 'all', flags: { canView: true, canCreate: true, canEdit: true, canDelete: true } },

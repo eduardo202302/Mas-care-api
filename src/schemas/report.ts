@@ -10,7 +10,7 @@ import { pagingFields } from '../infra/pagination.js';
  * single day count) using the longest possible 24-month span: 2 years x 366
  * days to stay correct across leap years.
  */
-export const MAX_RANGE_DAYS = 24 * 366;
+export const MAX_RANGE_DAYS = 2 * 366;
 
 /**
  * `branch_id` format decision: a single query param holding a comma-separated

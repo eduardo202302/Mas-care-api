@@ -39,4 +39,3 @@ jobs:
       - run: npm run lint
       - run: npm test
       - run: npm run test:isolation
-      - run: docker build -t max-care-api:ci .

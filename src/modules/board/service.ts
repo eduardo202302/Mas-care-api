@@ -1,7 +1,9 @@
 import type { Prisma } from '@prisma/client';
+import { customFilter } from '../custom-properties/service.js';
 import { addDays, deriveCoverage, subtractDays, toDateOnly } from '../../domain/coverage.js';
 import { boardColumns, type BoardColumn } from '../../domain/cycleTransitions.js';
 import { accessibleBranchIds } from '../../infra/branch-scope.js';
+import { ApiError } from '../../infra/errors.js';
 import { withTenant } from '../../infra/prisma.js';
 import { findOrCreateSetting } from '../../infra/settings.js';
 import type { z } from 'zod';
@@ -33,6 +35,7 @@ const cardInclude = {
       patientId: true,
       medicationId: true,
       responsibleUserId: true,
+      customValues: true,
       responsibleUser: { select: { id: true, name: true } },
       status: true,
       startDate: true,
@@ -124,6 +127,8 @@ export function presentCard(
     treatment_id: treatment.id,
     version: cycle.version,
     status: cycle.status,
+    stage_id: cycle.stageId,
+    treatment_custom_values: treatment.customValues,
     patient: { id: treatment.patient.id, nombre: treatment.patient.fullName, full_name: treatment.patient.fullName },
     medication: {
       id: treatment.medication.id,
@@ -306,9 +311,11 @@ export async function boardData(
     const base = await baseWhere(tx, tenant, filters, context);
     const columns = await Promise.all(boardColumns.map(async (column) => {
       const where = columnWhere(column, base, today);
-      const [count, dueToday, rows] = await Promise.all([
+      const [count, dueToday, overdue, dueSoon, rows] = await Promise.all([
         tx.refillCycle.count({ where }),
         tx.refillCycle.count({ where: { AND: [where, { expectedOn: { lte: today } }] } }),
+        tx.refillCycle.count({ where: { AND: [where, { expectedOn: { lt: today } }] } }),
+        tx.refillCycle.count({ where: { AND: [where, { expectedOn: { gte: today, lte: addDays(today, 3) } }] } }),
         tx.refillCycle.findMany({
           where,
           include: cardInclude,
@@ -320,6 +327,8 @@ export async function boardData(
         column,
         count,
         due_today_count: dueToday,
+        overdue_count: overdue,
+        due_soon_count: dueSoon,
         cards: await presentCycleCards(tx, rows, settings, today),
       }] as const;
     }));
@@ -365,12 +374,71 @@ export async function columnData(
   });
 }
 
+const dayRange = (from?: string, to?: string) => ({
+  ...(from ? { gte: dateOnly(from) } : {}),
+  ...(to ? { lte: new Date(dateOnly(to).getTime() + 86_399_999) } : {}),
+});
+
+/** Table-only filters. Association sets combine with `match`; dates always narrow (AND). */
+function tableExtraWhere(query: z.infer<typeof cycleListQuery>): Prisma.RefillCycleWhereInput[] {
+  const and: Prisma.RefillCycleWhereInput[] = [];
+  if (query.created_from || query.created_to) and.push({ createdAt: dayRange(query.created_from, query.created_to) });
+  if (query.activity_from || query.activity_to) {
+    // "some activity in the range": the cycle was touched between the two dates.
+    and.push({ activities: { some: { occurredAt: dayRange(query.activity_from, query.activity_to) } } });
+  }
+  if (query.coverage_from || query.coverage_to) and.push({ treatment: { is: { coverageEndOn: dayRange(query.coverage_from, query.coverage_to) } } });
+  const sets: Prisma.RefillCycleWhereInput[] = [];
+  if (query.patient_ids) sets.push({ treatment: { is: { patientId: { in: query.patient_ids } } } });
+  if (query.medication_ids) sets.push({ treatment: { is: { medicationId: { in: query.medication_ids } } } });
+  if (query.branch_ids) sets.push({ branchId: { in: query.branch_ids } });
+  if (query.responsible_ids) sets.push({ treatment: { is: { responsibleUserId: { in: query.responsible_ids } } } });
+  if (query.treatment_ids) sets.push({ treatmentId: { in: query.treatment_ids } });
+  if (sets.length) and.push(query.match === 'or' ? { OR: sets } : { AND: sets });
+  return and;
+}
+
+const sortMap: Record<string, (dir: 'asc' | 'desc') => Prisma.RefillCycleOrderByWithRelationInput> = {
+  expected_on: (dir) => ({ expectedOn: dir }),
+  created_at: (dir) => ({ createdAt: dir }),
+  coverage_end_on: (dir) => ({ treatment: { coverageEndOn: dir } }),
+  // shortcut: the derived status follows days to coverage end, so it sorts by that date. Upgrade if derived statuses stop being date-driven.
+  derived_status: (dir) => ({ treatment: { coverageEndOn: dir } }),
+  status: (dir) => ({ status: dir }),
+  patient: (dir) => ({ treatment: { patient: { fullName: dir } } }),
+  medication: (dir) => ({ treatment: { medication: { genericName: dir } } }),
+};
+
+function tableOrder(sort?: string[]): Prisma.RefillCycleOrderByWithRelationInput[] {
+  if (!sort?.length) return tableOrderBy;
+  return [...sort.map((part) => {
+    const [field, dir] = part.split(':') as [string, 'asc' | 'desc'];
+    return sortMap[field]!(dir);
+  }), { id: 'asc' }];
+}
+
+/**
+ * Cycles in one stage. A cycle is in a stage when it points at it from the stage's column, or when it is the
+ * column's first stage and the cycle points at nothing (or at a stage of another column).
+ */
+async function stageWhere(tx: Tx, stageId: string): Promise<Prisma.RefillCycleWhereInput> {
+  const stage = await tx.pipelineStage.findFirst({ where: { id: stageId } });
+  if (!stage) throw new ApiError(400, 'UNKNOWN_STAGE', 'Etapa desconocida');
+  const siblings = await tx.pipelineStage.findMany({ where: { pipelineId: stage.pipelineId, systemStatus: stage.systemStatus }, orderBy: { position: 'asc' }, select: { id: true } });
+  const statuses = stage.systemStatus === 'closed' ? ['delivered', 'not_picked_up'] : [stage.systemStatus];
+  const inColumn = { status: { in: statuses as ('delivered' | 'not_picked_up')[] } };
+  if (siblings[0]?.id !== stage.id) return { AND: [inColumn, { stageId: stage.id }] };
+  return { AND: [inColumn, { OR: [{ stageId: null }, { stageId: stage.id }, { stageId: { notIn: siblings.map((item) => item.id) } }] }] };
+}
+
 export async function tableData(tenant: Tenant, query: z.infer<typeof cycleListQuery>) {
   return withTenant(tenant.organizationId, async (tx) => {
     const settings = await settingsFor(tx, tenant.organizationId);
     const today = todayOnly();
     const context = derivedContext(settings, today);
-    const base = await baseWhere(tx, tenant, query, context);
+    const custom = await customFilter(tx, 'treatment', query.cp_key, query.cp_value);
+    const stage = query.stage_id ? [await stageWhere(tx, query.stage_id)] : [];
+    const base = { AND: [await baseWhere(tx, tenant, query, context), ...tableExtraWhere(query), ...stage, ...(custom ? [{ treatment: { is: { customValues: custom as Prisma.JsonFilter<'Treatment'> } } }] : [])] };
     /**
      * Without an explicit status the table mirrors the board exactly: the four
      * open columns plus the pickup outcomes closed during the last 7 days.
@@ -394,7 +462,7 @@ export async function tableData(tenant: Tenant, query: z.infer<typeof cycleListQ
     const rows = await tx.refillCycle.findMany({
       where,
       include: cardInclude,
-      orderBy: tableOrderBy,
+      orderBy: tableOrder(query.sort),
       take: query.limit + 1,
       ...(query.cursor ? { cursor: { organizationId_id: { organizationId: tenant.organizationId, id: query.cursor } }, skip: 1 } : {}),
     });

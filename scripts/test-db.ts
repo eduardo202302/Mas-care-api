@@ -10,7 +10,7 @@ if (!databaseUrl || !directUrl || !appPassword) {
     [
       'TEST_DATABASE_URL, TEST_DIRECT_URL and APP_DB_PASSWORD are required.',
       '',
-      'PowerShell example (Docker Compose defaults):',
+      'PowerShell example (local PostgreSQL; the database name must contain "test"):',
       "  $env:APP_DB_PASSWORD='maxcare_app_dev_0123456789abcdef0123456789abcdef'",
       "  $env:TEST_DATABASE_URL=\"postgresql://maxcare_app:$env:APP_DB_PASSWORD@localhost:5432/maxcare_test?schema=public\"",
       "  $env:TEST_DIRECT_URL='postgresql://maxcare:maxcare_dev@localhost:5432/maxcare_test?schema=public'",

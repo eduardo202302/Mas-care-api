@@ -11,11 +11,14 @@ import { savedViewCreate, savedViewParams, savedViewPatch, savedViewQuery } from
 export const savedViewsRouter = Router();
 savedViewsRouter.use(resolveTenant);
 
-const requireRead = (role: Parameters<typeof puede>[0]) => {
-  if (!puede(role, 'patients:read')) throw new ApiError(403, 'FORBIDDEN', 'Permission denied');
+const family = (entity: string) => (entity.startsWith('cycles') ? 'treatments' : 'patients');
+const requireRead = (role: Parameters<typeof puede>[0], entity: string) => {
+  if (!puede(role, `${family(entity)}:read` as Parameters<typeof puede>[1])) throw new ApiError(403, 'FORBIDDEN', 'Permission denied');
 };
-const requireWrite = (role: Parameters<typeof puede>[0]) => {
-  if (!puede(role, 'patients:write')) throw new ApiError(403, 'FORBIDDEN', 'Permission denied');
+// Column preferences are personal, so reading is enough; saved views need write access.
+const requireWrite = (role: Parameters<typeof puede>[0], entity: string) => {
+  if (entity.endsWith('_columns')) { requireRead(role, entity); return; }
+  if (!puede(role, `${family(entity)}:write` as Parameters<typeof puede>[1])) throw new ApiError(403, 'FORBIDDEN', 'Permission denied');
 };
 const handleUniqueName = (error: unknown): never => {
   if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
@@ -26,8 +29,8 @@ const handleUniqueName = (error: unknown): never => {
 
 savedViewsRouter.get('/', validateQuery(savedViewQuery), async (req, res) => {
   const tenant = req.tenant!;
-  requireRead(tenant.role);
   const { entity } = res.locals.validatedQuery as z.infer<typeof savedViewQuery>;
+  requireRead(tenant.role, entity);
   const data = await withTenant(tenant.organizationId, (tx) => tx.savedView.findMany({
     where: { userId: tenant.userId, entity },
     orderBy: [{ isDefault: 'desc' }, { name: 'asc' }],
@@ -37,8 +40,8 @@ savedViewsRouter.get('/', validateQuery(savedViewQuery), async (req, res) => {
 
 savedViewsRouter.post('/', validateBody(savedViewCreate), async (req, res) => {
   const tenant = req.tenant!;
-  requireWrite(tenant.role);
   const input = req.body as z.infer<typeof savedViewCreate>;
+  requireWrite(tenant.role, input.entity);
   try {
     const view = await withTenant(tenant.organizationId, async (tx) => {
       if (input.isDefault) {
@@ -61,13 +64,13 @@ savedViewsRouter.post('/', validateBody(savedViewCreate), async (req, res) => {
 
 savedViewsRouter.patch('/:id', validateParams(savedViewParams), validateBody(savedViewPatch), async (req, res) => {
   const tenant = req.tenant!;
-  requireWrite(tenant.role);
   const { id } = res.locals.validatedParams as z.infer<typeof savedViewParams>;
   const input = req.body as z.infer<typeof savedViewPatch>;
   try {
     const view = await withTenant(tenant.organizationId, async (tx) => {
       const current = await tx.savedView.findFirst({ where: { id, userId: tenant.userId } });
       if (!current) throw new ApiError(404, 'NOT_FOUND', 'Saved view not found');
+      requireWrite(tenant.role, current.entity);
       if (input.isDefault) {
         await tx.savedView.updateMany({ where: { userId: tenant.userId, entity: current.entity, isDefault: true, NOT: { id } }, data: { isDefault: false } });
       }
@@ -87,11 +90,11 @@ savedViewsRouter.patch('/:id', validateParams(savedViewParams), validateBody(sav
 
 savedViewsRouter.delete('/:id', validateParams(savedViewParams), async (req, res) => {
   const tenant = req.tenant!;
-  requireWrite(tenant.role);
   const { id } = res.locals.validatedParams as z.infer<typeof savedViewParams>;
   await withTenant(tenant.organizationId, async (tx) => {
     const current = await tx.savedView.findFirst({ where: { id, userId: tenant.userId } });
     if (!current) throw new ApiError(404, 'NOT_FOUND', 'Saved view not found');
+    requireWrite(tenant.role, current.entity);
     await tx.savedView.delete({ where: { id } });
   }, tenant.userId);
   res.status(204).end();

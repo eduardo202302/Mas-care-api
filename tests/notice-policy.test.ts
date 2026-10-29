@@ -41,7 +41,7 @@ const outsideWindow = new Date('2026-10-27T01:00:00Z');
 describe('decideNextAction', () => {
   it('rule 1: sends the first notice once within noticeLeadDays of coverage ending', () => {
     expect(decideNextAction(cycle, treatment, patient, settings, history, insideWindow))
-      .toEqual({ type: 'send', attempt: 1 });
+      .toEqual({ type: 'send', attempt: 1, channel: 'whatsapp' });
   });
 
   it('rule 1: waits until the lead window opens when coverage ends far in the future', () => {
@@ -60,7 +60,7 @@ describe('decideNextAction', () => {
       lastNoticeWasManual: false,
     };
     expect(decideNextAction(notifiedCycle, treatment, patient, settings, longAgo, insideWindow))
-      .toEqual({ type: 'send', attempt: 2 });
+      .toEqual({ type: 'send', attempt: 2, channel: 'whatsapp' });
   });
 
   it('rule 2: waits for retryAfterHours before a reminder, bound by the notice window', () => {
@@ -143,10 +143,19 @@ describe('decideNextAction', () => {
       .toEqual({ type: 'create_incident' });
   });
 
+  it('rule 6: the last attempt still gets retryAfterHours to be answered before escalating', () => {
+    const exhausted: NoticeCycleSnapshot = { status: 'notified', noticeAttempts: 3 };
+    const recent: NoticeHistorySnapshot = { lastNoticeAt: new Date('2026-10-27T05:00:00Z'), lastNoticeWasManual: false };
+    expect(decideNextAction(exhausted, treatment, patient, settings, recent, insideWindow))
+      .toEqual({ type: 'wait', until: new Date('2026-10-28T05:00:00Z') });
+    const old: NoticeHistorySnapshot = { lastNoticeAt: new Date('2026-10-25T05:00:00Z'), lastNoticeWasManual: false };
+    expect(decideNextAction(exhausted, treatment, patient, settings, old, insideWindow)).toEqual({ type: 'create_incident' });
+  });
+
   it('rule 7: an overdue treatment still sends immediately, not after a wait', () => {
     const overdue = { ...treatment, coverageEndOn: new Date('2026-10-20T00:00:00Z') };
     expect(decideNextAction(cycle, overdue, patient, settings, history, insideWindow))
-      .toEqual({ type: 'send', attempt: 1 });
+      .toEqual({ type: 'send', attempt: 1, channel: 'whatsapp' });
   });
 
   it('rule 8: a recent manual notice suppresses the automatic one for retryAfterHours', () => {
@@ -164,6 +173,80 @@ describe('decideNextAction', () => {
       lastNoticeWasManual: true,
     };
     expect(decideNextAction(cycle, treatment, patient, settings, oldManual, insideWindow))
-      .toEqual({ type: 'send', attempt: 1 });
+      .toEqual({ type: 'send', attempt: 1, channel: 'whatsapp' });
+  });
+
+  // 13:00Z is 09:00 in Santo Domingo (window opens); 22:00Z is 18:00 (window closes, exclusive).
+  it('rule 3 boundaries: sends at exactly the opening minute, waits at exactly the closing minute', () => {
+    expect(decideNextAction(cycle, treatment, patient, settings, history, new Date('2026-10-27T13:00:00Z')))
+      .toEqual({ type: 'send', attempt: 1, channel: 'whatsapp' });
+    expect(decideNextAction(cycle, treatment, patient, settings, history, new Date('2026-10-27T21:59:00Z')))
+      .toEqual({ type: 'send', attempt: 1, channel: 'whatsapp' });
+    expect(decideNextAction(cycle, treatment, patient, settings, history, new Date('2026-10-27T22:00:00Z')))
+      .toEqual({ type: 'wait', until: new Date('2026-10-28T13:00:00Z') });
+    expect(decideNextAction(cycle, treatment, patient, settings, history, new Date('2026-10-27T12:59:00Z')))
+      .toEqual({ type: 'wait', until: new Date('2026-10-27T13:00:00Z') });
+  });
+
+  it('rule 3: the same instant is inside the window in one zone and outside it in another', () => {
+    const instant = new Date('2026-10-27T13:30:00Z');
+    // Bogotá is UTC-5, so 13:30Z is 08:30 there, before the 09:00 opening.
+    const bogota = { ...settings, timezone: 'America/Bogota' };
+    expect(decideNextAction(cycle, treatment, patient, bogota, history, instant)).toMatchObject({ type: 'wait' });
+    expect(decideNextAction(cycle, treatment, patient, settings, history, instant)).toEqual({ type: 'send', attempt: 1, channel: 'whatsapp' });
+    // Madrid in winter (UTC+1) is already 14:30 and still inside.
+    expect(decideNextAction(cycle, treatment, patient, { ...settings, timezone: 'Europe/Madrid' }, history, instant)).toEqual({ type: 'send', attempt: 1, channel: 'whatsapp' });
+  });
+
+  it('rule 1 boundary: exactly noticeLeadDays away sends, one day more waits', () => {
+    const edge = { ...treatment, coverageEndOn: new Date('2026-11-01T00:00:00Z') };
+    const later = { ...treatment, coverageEndOn: new Date('2026-11-02T00:00:00Z') };
+    expect(decideNextAction(cycle, edge, patient, settings, history, insideWindow)).toEqual({ type: 'send', attempt: 1, channel: 'whatsapp' });
+    expect(decideNextAction(cycle, later, patient, settings, history, insideWindow)).toMatchObject({ type: 'wait' });
+  });
+
+  it('rule 2 boundary: the reminder goes out exactly at retryAfterHours, not a minute before', () => {
+    const notified: NoticeCycleSnapshot = { status: 'notified', noticeAttempts: 1 };
+    const sentAt = new Date('2026-10-26T13:30:00Z');
+    const lastNotice: NoticeHistorySnapshot = { lastNoticeAt: sentAt, lastNoticeWasManual: false };
+    expect(decideNextAction(notified, treatment, patient, settings, lastNotice, new Date('2026-10-27T13:29:00Z'))).toMatchObject({ type: 'wait' });
+    expect(decideNextAction(notified, treatment, patient, settings, lastNotice, new Date('2026-10-27T13:30:00Z'))).toEqual({ type: 'send', attempt: 2, channel: 'whatsapp' });
+  });
+
+  it('rule 2: attempts below the maximum keep sending reminders; at the maximum they stop sending', () => {
+    const lastNotice: NoticeHistorySnapshot = { lastNoticeAt: new Date('2026-10-20T13:30:00Z'), lastNoticeWasManual: false };
+    expect(decideNextAction({ status: 'notified', noticeAttempts: 2 }, treatment, patient, settings, lastNotice, insideWindow)).toEqual({ type: 'send', attempt: 3, channel: 'whatsapp' });
+    expect(decideNextAction({ status: 'notified', noticeAttempts: 3 }, treatment, patient, settings, lastNotice, insideWindow)).toEqual({ type: 'create_incident' });
+  });
+
+  it('rule 4 comes before the WhatsApp check: no consent never sends, whatever the phone', () => {
+    const noConsentNoPhone = { ...patient, reminderConsent: false, phone: null };
+    expect(decideNextAction(cycle, treatment, noConsentNoPhone, settings, history, insideWindow)).toEqual({ type: 'skip', reason: 'no_consent' });
+    expect(decideNextAction(cycle, treatment, noConsentNoPhone, { ...settings, autoCallTaskWithoutConsent: true }, history, insideWindow))
+      .toEqual({ type: 'create_call_task', reason: 'no_consent' });
+  });
+
+  it('rule 5: a patient with consent but no WhatsApp gets a call task, never a message', () => {
+    expect(decideNextAction(cycle, treatment, { ...patient, phoneHasWhatsapp: false }, settings, history, insideWindow))
+      .toEqual({ type: 'create_call_task', reason: 'no_whatsapp' });
+    expect(decideNextAction(cycle, treatment, { ...patient, phone: '' }, settings, history, insideWindow))
+      .toEqual({ type: 'create_call_task', reason: 'no_whatsapp' });
+  });
+
+  it('rule 5: each closed state skips, in a reminder cycle too', () => {
+    for (const status of ['confirmed', 'prepared', 'delivered', 'not_picked_up', 'cancelled'] as const) {
+      expect(decideNextAction({ status, noticeAttempts: 1 }, treatment, patient, settings, history, insideWindow)).toEqual({ type: 'skip', reason: 'cycle_closed' });
+    }
+  });
+
+  it('rule 7: an overdue treatment outside the window waits for it to open instead of sending', () => {
+    const overdue = { ...treatment, coverageEndOn: new Date('2026-10-20T00:00:00Z') };
+    expect(decideNextAction(cycle, overdue, patient, settings, history, outsideWindow)).toMatchObject({ type: 'wait' });
+  });
+
+  it('rule 8: a manual notice logged just now blocks the automatic one even when attempts remain', () => {
+    const manual: NoticeHistorySnapshot = { lastNoticeAt: new Date('2026-10-27T10:00:00Z'), lastNoticeWasManual: true };
+    expect(decideNextAction({ status: 'notified', noticeAttempts: 1 }, treatment, patient, settings, manual, insideWindow))
+      .toEqual({ type: 'skip', reason: 'manual_notice_recent' });
   });
 });
