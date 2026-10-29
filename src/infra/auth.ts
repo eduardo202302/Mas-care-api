@@ -16,7 +16,7 @@ async function recordSessionEvent(userId: string, action: 'auth.login' | 'auth.l
 }
 
 export const auth = betterAuth({
-  appName: 'Max Care',
+  appName: 'MAS CARE',
   database: prismaAdapter(prisma, { provider: 'postgresql' }),
   secret: env.BETTER_AUTH_SECRET,
   baseURL: env.BETTER_AUTH_URL,
@@ -32,7 +32,7 @@ export const auth = betterAuth({
   emailVerification: {
     autoSignInAfterVerification: true,
     sendVerificationEmail: async ({ user, url }) => {
-      await sendMail(user.email, 'Confirma tu correo en Max Care', `Hola ${user.name}, confirma tu correo con este enlace:
+      await sendMail(user.email, 'Confirma tu correo en MAS CARE', `Hola ${user.name}, confirma tu correo con este enlace:
 ${url}
 
 Si no creaste la cuenta, ignora este mensaje.`);

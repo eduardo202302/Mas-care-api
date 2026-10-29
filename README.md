@@ -1,4 +1,4 @@
-# Max Care API
+# MAS CARE API
 
 API multiempresa para farmacias: Node.js 22, Express, TypeScript, Prisma, PostgreSQL 16 y Better Auth. La Fase 1.1 incorpora pacientes completos, cuidadores, historial y consentimientos, catálogo de medicamentos y vistas guardadas. La Fase 1.2 añade tratamientos, ciclos de reposición, entregas y cobertura derivada al leer. La Fase 1.3 añade el panel del día, tareas, plantillas de aviso con enlace `wa.me`, registro manual de avisos e importación CSV de pacientes. Después se añadieron tablero Kanban, incidencias, traspasos, informes, etapas configurables, propiedades personalizadas, importación y exportación, y reglas de automatización (ver [Ampliaciones recientes](#ampliaciones-recientes)). **No envía mensajes reales a pacientes.** Las tareas en segundo plano corren en un proceso aparte, el worker (ver [Worker](#worker-fase-3-en-curso)).
 
@@ -16,13 +16,13 @@ npm run db:seed
 npm run dev
 ```
 
-La API queda en `http://localhost:3000`; comprueba `/api/v1/health` y `/api/v1/openapi.json`. `db:role` crea o actualiza el rol `maxcare_app` (sin `BYPASSRLS`) y `db:grant` le concede acceso solo a las tablas de Max Care.
+La API queda en `http://localhost:3000`; comprueba `/api/v1/health` y `/api/v1/openapi.json`. `db:role` crea o actualiza el rol `maxcare_app` (sin `BYPASSRLS`) y `db:grant` le concede acceso solo a las tablas de MAS CARE.
 
 `DATABASE_URL` es la credencial de ejecución con `NOBYPASSRLS`. `DIRECT_URL` es la credencial administrativa para crear ese rol y ejecutar migraciones. En Neon usa el endpoint directo en `DIRECT_URL`; `DATABASE_URL` puede usar el endpoint pooler. No uses la credencial administrativa para ejecutar la API.
 
 ## Cuenta de desarrollo
 
-El seed solo corre con `NODE_ENV=development` y es idempotente. Crea dos organizaciones (`Max Care A` y `Max Care B`), dos sucursales por organización, pacientes de ejemplo y un usuario por rol en cada una. Todas las cuentas usan `MaxCareDev-2026!`:
+El seed solo corre con `NODE_ENV=development` y es idempotente. Crea dos organizaciones (`MAS CARE A` y `MAS CARE B`), dos sucursales por organización, pacientes de ejemplo y un usuario por rol en cada una. Todas las cuentas usan `MaxCareDev-2026!`:
 
 - `owner.a@maxcare.test`, `admin.a@maxcare.test`, `pharmacist.a@maxcare.test`, `operator.a@maxcare.test`, `read_only.a@maxcare.test`
 - Las mismas cuentas con `.b` para la organización B.

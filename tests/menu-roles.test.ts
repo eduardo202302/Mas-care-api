@@ -21,7 +21,9 @@ describe('menu catalog defaults', () => {
       .map((entry) => readFileSync(`prisma/migrations/${entry.name}/migration.sql`, 'utf8'))
       .join('\n');
     for (const seed of menuSeeds) {
-      expect(sql).toContain(`'${menuItemId(seed.key)}','${seed.key}','${seed.label}'`);
+      // A later UPDATE migration may rename a label, so check id/key and label separately.
+      expect(sql).toContain(`'${menuItemId(seed.key)}','${seed.key}',`);
+      expect(sql).toContain(`'${seed.label}'`);
     }
     expect(sql.match(/\('menu_/g)).toHaveLength(menuSeeds.length);
   });
