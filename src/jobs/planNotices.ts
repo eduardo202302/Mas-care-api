@@ -4,9 +4,7 @@ import {
   decideNextAction,
   type NoticeAction,
   type NoticeCycleSnapshot,
-  type NoticeHistorySnapshot,
   type NoticePatientSnapshot,
-  type NoticeSettingsSnapshot,
   type NoticeTreatmentSnapshot,
 } from '../domain/noticePolicy.js';
 import { logger } from '../infra/logger.js';

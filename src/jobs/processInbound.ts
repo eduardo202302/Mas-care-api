@@ -3,7 +3,7 @@ import { normalizePhone } from '../domain/notice.js';
 import { logger } from '../infra/logger.js';
 import { prisma, withTenant } from '../infra/prisma.js';
 import { record } from '../modules/audit/record.js';
-import { effectiveSettings, systemActor } from './shared.js';
+import { systemActor } from './shared.js';
 
 type Tx = Prisma.TransactionClient;
 type Inbound = Awaited<ReturnType<Tx['whatsappInbound']['findFirstOrThrow']>>;

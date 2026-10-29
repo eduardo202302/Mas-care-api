@@ -200,7 +200,7 @@ exportsRouter.post('/:entity', exportRateLimit, validateParams(exportParams), va
     const lines = [columns.map((c) => csvCell(c.header)), ...rows.map((row) => columns.map((c) => csvCell(c.value(row))))];
     res.setHeader('Content-Type', 'text/csv; charset=utf-8');
     res.setHeader('Content-Disposition', `attachment; filename="${entity}.csv"`);
-    res.send(`﻿${lines.map((l) => l.join(',')).join('\r\n')}`);
+    res.send(`\uFEFF${lines.map((l) => l.join(',')).join('\r\n')}`);
     return;
   }
   const workbook = new ExcelJS.Workbook();
