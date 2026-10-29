@@ -1041,5 +1041,5 @@ registry.registerPath({
 
 export const openApiDocument = new OpenApiGeneratorV3(registry.definitions).generateDocument({
   openapi: '3.0.3',
-  info: { title: 'Max Care API', version: '0.1.0' },
+  info: { title: 'MAS CARE API', version: '0.1.0' },
 });
