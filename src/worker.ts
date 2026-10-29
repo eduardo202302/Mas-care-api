@@ -1,3 +1,4 @@
+import './infra/bigint-json.js';
 import { PgBoss } from 'pg-boss';
 import { env } from './config/env.js';
 import { logger } from './infra/logger.js';

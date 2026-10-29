@@ -31,6 +31,7 @@ model Branch {
   outboxMessages   OutboxMessage[]
   transfersFrom    PatientTransfer[]     @relation("PatientTransferFromBranch")
   transfersTo      PatientTransfer[]     @relation("PatientTransferToBranch")
+  numericId        BigInt                @unique @default(dbgenerated("nextval('global_numeric_id_seq'::regclass)")) @map("numeric_id")
 
   @@unique([organizationId, id])
   @@index([organizationId])
@@ -67,6 +68,7 @@ model Setting {
   autoCallTaskWithoutConsent Boolean      @default(false) @map("auto_call_task_without_consent")
   defaultCountryCode         String       @default("DO") @map("default_country_code")
   organization               Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  numericId                  BigInt       @unique @default(dbgenerated("nextval('global_numeric_id_seq'::regclass)")) @map("numeric_id")
 
   @@unique([organizationId, branchId])
   @@index([organizationId])
@@ -82,6 +84,7 @@ model AuditLog {
   metadata       Json         @default("{}")
   createdAt      DateTime     @default(now()) @map("created_at")
   organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  numericId      BigInt       @unique @default(dbgenerated("nextval('global_numeric_id_seq'::regclass)")) @map("numeric_id")
 
   @@index([organizationId, createdAt])
   @@map("audit_log")
@@ -125,6 +128,7 @@ model Patient {
   telegramLinks          TelegramLink[]
   telegramLinkTokens     TelegramLinkToken[]
   transfers              PatientTransfer[]
+  numericId              BigInt              @unique @default(dbgenerated("nextval('global_numeric_id_seq'::regclass)")) @map("numeric_id")
 
   @@unique([organizationId, id])
   @@index([organizationId, documentId])
@@ -184,6 +188,7 @@ model PatientCaregiver {
   relationship   String
   isPrimary      Boolean @default(false) @map("is_primary")
   patient        Patient @relation(fields: [organizationId, patientId], references: [organizationId, id], onDelete: Cascade)
+  numericId      BigInt  @unique @default(dbgenerated("nextval('global_numeric_id_seq'::regclass)")) @map("numeric_id")
 
   @@unique([organizationId, id])
   @@index([organizationId, patientId])
@@ -201,6 +206,7 @@ model PatientConsent {
   recordedAt     DateTime       @default(now()) @map("recorded_at")
   patient        Patient        @relation(fields: [organizationId, patientId], references: [organizationId, id], onDelete: Cascade)
   recorder       User           @relation(fields: [recordedBy], references: [id], onDelete: Restrict)
+  numericId      BigInt         @unique @default(dbgenerated("nextval('global_numeric_id_seq'::regclass)")) @map("numeric_id")
 
   @@unique([organizationId, id])
   @@index([organizationId, patientId, recordedAt])
@@ -222,6 +228,7 @@ model Medication {
   organization     Organization          @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   treatments       Treatment[]
   stockMarks       MedicationStockMark[]
+  numericId        BigInt                @unique @default(dbgenerated("nextval('global_numeric_id_seq'::regclass)")) @map("numeric_id")
 
   @@unique([organizationId, id])
   @@index([organizationId])
@@ -292,6 +299,7 @@ model Treatment {
   patientId                String                     @map("patient_id")
   medicationId             String                     @map("medication_id")
   branchId                 String                     @map("branch_id")
+  name                     String?
   responsibleUserId        String?                    @map("responsible_user_id")
   dosePerIntake            Decimal                    @map("dose_per_intake") @db.Decimal(8, 3)
   intakesPerDay            Decimal                    @map("intakes_per_day") @db.Decimal(6, 3)
@@ -324,6 +332,7 @@ model Treatment {
   incidents                Incident[]
   outboxMessages           OutboxMessage[]
   transferLines            PatientTransferTreatment[]
+  numericId                BigInt                     @unique @default(dbgenerated("nextval('global_numeric_id_seq'::regclass)")) @map("numeric_id")
 
   @@unique([organizationId, id])
   @@index([organizationId, patientId])
@@ -365,6 +374,7 @@ model RefillCycle {
   outboxMessages    OutboxMessage[]
   notices           Notice[]
   whatsappInbound   WhatsappInbound[]
+  numericId         BigInt            @unique @default(dbgenerated("nextval('global_numeric_id_seq'::regclass)")) @map("numeric_id")
 
   @@unique([organizationId, id])
   @@index([organizationId, treatmentId, status])
@@ -419,6 +429,7 @@ model OutboxMessage {
   cycle             RefillCycle     @relation(fields: [organizationId, cycleId], references: [organizationId, id], onDelete: Cascade)
   template          MessageTemplate @relation(fields: [organizationId, templateId], references: [organizationId, id], onDelete: Restrict)
   notice            Notice?
+  numericId         BigInt          @unique @default(dbgenerated("nextval('global_numeric_id_seq'::regclass)")) @map("numeric_id")
 
   @@unique([organizationId, dedupeKey])
   @@index([organizationId, status, scheduledFor])
@@ -461,6 +472,7 @@ model Notice {
   outbox         OutboxMessage @relation(fields: [outboxId], references: [id], onDelete: Cascade)
   cycle          RefillCycle   @relation(fields: [organizationId, cycleId], references: [organizationId, id], onDelete: Cascade)
   patient        Patient       @relation(fields: [organizationId, patientId], references: [organizationId, id], onDelete: Cascade)
+  numericId      BigInt        @unique @default(dbgenerated("nextval('global_numeric_id_seq'::regclass)")) @map("numeric_id")
 
   @@index([organizationId, cycleId])
   @@index([organizationId, patientId, sentAt])
@@ -528,6 +540,7 @@ model Incident {
   cycle          RefillCycle?   @relation(fields: [organizationId, cycleId], references: [organizationId, id], onDelete: Cascade)
   assignee       User?          @relation("IncidentAssignee", fields: [assignedTo], references: [id], onDelete: SetNull)
   creator        User           @relation("IncidentCreator", fields: [createdBy], references: [id], onDelete: Restrict)
+  numericId      BigInt         @unique @default(dbgenerated("nextval('global_numeric_id_seq'::regclass)")) @map("numeric_id")
 
   @@unique([organizationId, id])
   @@index([organizationId, branchId, status, boardPosition])
@@ -556,6 +569,7 @@ model Delivery {
   cycle           RefillCycle  @relation(fields: [cycleId], references: [id], onDelete: Restrict)
   branch          Branch       @relation(fields: [branchId], references: [id], onDelete: Restrict)
   deliveredByUser User         @relation("DeliveryRecordedBy", fields: [deliveredBy], references: [id], onDelete: Restrict)
+  numericId       BigInt       @unique @default(dbgenerated("nextval('global_numeric_id_seq'::regclass)")) @map("numeric_id")
 
   @@unique([organizationId, id])
   @@unique([organizationId, idempotencyKey])
@@ -590,6 +604,7 @@ model PatientTransfer {
   toBranch        Branch                     @relation("PatientTransferToBranch", fields: [organizationId, toBranchId], references: [organizationId, id], onDelete: Restrict)
   createdByUser   User                       @relation("PatientTransferCreatedBy", fields: [createdByUserId], references: [id], onDelete: Restrict)
   treatments      PatientTransferTreatment[]
+  numericId       BigInt                     @unique @default(dbgenerated("nextval('global_numeric_id_seq'::regclass)")) @map("numeric_id")
 
   @@unique([organizationId, id])
   @@unique([organizationId, idempotencyKey])
@@ -614,6 +629,7 @@ model PatientTransferTreatment {
   cyclesMovedCount  Int             @map("cycles_moved_count")
   patientTransfer   PatientTransfer @relation(fields: [patientTransferId], references: [id], onDelete: Cascade)
   treatment         Treatment       @relation(fields: [treatmentId], references: [id], onDelete: Cascade)
+  numericId         BigInt          @unique @default(dbgenerated("nextval('global_numeric_id_seq'::regclass)")) @map("numeric_id")
 
   @@unique([organizationId, id])
   @@index([organizationId, patientTransferId])
@@ -636,6 +652,7 @@ model Activity {
   treatment      Treatment?   @relation(fields: [treatmentId], references: [id], onDelete: SetNull)
   cycle          RefillCycle? @relation(fields: [cycleId], references: [id], onDelete: SetNull)
   author         User         @relation(fields: [authorId], references: [id], onDelete: Restrict)
+  numericId      BigInt       @unique @default(dbgenerated("nextval('global_numeric_id_seq'::regclass)")) @map("numeric_id")
 
   @@unique([organizationId, id])
   @@index([organizationId, patientId, occurredAt])
@@ -658,6 +675,7 @@ model SavedView {
   updatedAt      DateTime     @updatedAt @map("updated_at")
   organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   user           User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  numericId      BigInt       @unique @default(dbgenerated("nextval('global_numeric_id_seq'::regclass)")) @map("numeric_id")
 
   @@unique([organizationId, id])
   @@unique([organizationId, userId, entity, name])
@@ -690,6 +708,7 @@ model Task {
   cycle          RefillCycle? @relation(fields: [cycleId], references: [id], onDelete: SetNull)
   assignee       User?        @relation("TaskAssignee", fields: [assignedTo], references: [id], onDelete: SetNull)
   completer      User?        @relation("TaskCompletedBy", fields: [completedBy], references: [id], onDelete: SetNull)
+  numericId      BigInt       @unique @default(dbgenerated("nextval('global_numeric_id_seq'::regclass)")) @map("numeric_id")
 
   @@unique([organizationId, id])
   @@index([organizationId, branchId, status, dueAt])
@@ -718,6 +737,7 @@ model MessageTemplate {
   organization   Organization     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   branch         Branch?          @relation(fields: [branchId], references: [id], onDelete: Cascade)
   outboxMessages OutboxMessage[]
+  numericId      BigInt           @unique @default(dbgenerated("nextval('global_numeric_id_seq'::regclass)")) @map("numeric_id")
 
   @@unique([organizationId, id])
   @@index([organizationId, channel, kind, isActive])
@@ -740,6 +760,7 @@ model ImportJob {
   createdAt      DateTime     @default(now()) @map("created_at")
   organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   creator        User         @relation(fields: [createdBy], references: [id], onDelete: Restrict)
+  numericId      BigInt       @unique @default(dbgenerated("nextval('global_numeric_id_seq'::regclass)")) @map("numeric_id")
 
   @@unique([organizationId, id])
   @@index([organizationId, createdAt])
@@ -780,6 +801,7 @@ model User {
   assignedIncidents     Incident[]            @relation("IncidentAssignee")
   createdIncidents      Incident[]            @relation("IncidentCreator")
   createdTransfers      PatientTransfer[]     @relation("PatientTransferCreatedBy")
+  numericId             BigInt                @unique @default(dbgenerated("nextval('global_numeric_id_seq'::regclass)")) @map("numeric_id")
 
   @@unique([email])
   @@map("user")
@@ -797,6 +819,7 @@ model PasswordResetPin {
   passwordChangedAt   DateTime? @map("password_changed_at")
   createdAt           DateTime  @default(now()) @map("created_at")
   user                User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  numericId           BigInt    @unique @default(dbgenerated("nextval('global_numeric_id_seq'::regclass)")) @map("numeric_id")
 
   @@index([userId, usedAt, expiresAt])
   @@map("password_reset_pin")
@@ -813,6 +836,7 @@ model Session {
   userId               String
   user                 User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   activeOrganizationId String?
+  numericId            BigInt   @unique @default(dbgenerated("nextval('global_numeric_id_seq'::regclass)")) @map("numeric_id")
 
   @@unique([token])
   @@index([userId])
@@ -834,6 +858,7 @@ model Account {
   password              String?
   createdAt             DateTime  @default(now())
   updatedAt             DateTime  @updatedAt
+  numericId             BigInt    @unique @default(dbgenerated("nextval('global_numeric_id_seq'::regclass)")) @map("numeric_id")
 
   @@index([userId])
   @@map("account")
@@ -846,6 +871,7 @@ model Verification {
   expiresAt  DateTime
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt
+  numericId  BigInt   @unique @default(dbgenerated("nextval('global_numeric_id_seq'::regclass)")) @map("numeric_id")
 
   @@index([identifier])
   @@map("verification")
@@ -889,6 +915,7 @@ model Organization {
   telegramLinks      TelegramLink[]
   telegramLinkTokens TelegramLinkToken[]
   customProperties   CustomProperty[]
+  numericId          BigInt              @unique @default(dbgenerated("nextval('global_numeric_id_seq'::regclass)")) @map("numeric_id")
 
   @@unique([slug])
   @@map("organization")
@@ -904,6 +931,7 @@ model Member {
   roleId         String?
   roleRef        Role?        @relation(fields: [roleId], references: [id], onDelete: SetNull)
   createdAt      DateTime
+  numericId      BigInt       @unique @default(dbgenerated("nextval('global_numeric_id_seq'::regclass)")) @map("numeric_id")
 
   @@index([organizationId])
   @@index([userId])
@@ -922,6 +950,7 @@ model Invitation {
   createdAt      DateTime     @default(now())
   inviterId      String
   user           User         @relation(fields: [inviterId], references: [id], onDelete: Cascade)
+  numericId      BigInt       @unique @default(dbgenerated("nextval('global_numeric_id_seq'::regclass)")) @map("numeric_id")
 
   @@index([organizationId])
   @@index([email])
@@ -943,6 +972,7 @@ model MenuItem {
   parent     MenuItem?      @relation("MenuTree", fields: [parentId], references: [id], onDelete: Restrict)
   children   MenuItem[]     @relation("MenuTree")
   roleItems  RoleMenuItem[]
+  numericId  BigInt         @unique @default(dbgenerated("nextval('global_numeric_id_seq'::regclass)")) @map("numeric_id")
 
   @@index([parentId])
   @@map("menu_items")
@@ -962,6 +992,7 @@ model Role {
   organization   Organization   @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   menuItems      RoleMenuItem[]
   members        Member[]
+  numericId      BigInt         @unique @default(dbgenerated("nextval('global_numeric_id_seq'::regclass)")) @map("numeric_id")
 
   @@unique([organizationId, id])
   @@unique([organizationId, name])
@@ -998,6 +1029,7 @@ model AutomationRule {
   createdAt      DateTime     @default(now()) @map("created_at")
   updatedAt      DateTime     @updatedAt @map("updated_at")
   organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  numericId      BigInt       @unique @default(dbgenerated("nextval('global_numeric_id_seq'::regclass)")) @map("numeric_id")
 
   @@unique([organizationId, key])
   @@unique([organizationId, id])
@@ -1018,6 +1050,7 @@ model AutomationRun {
   detail         Json         @default("{}")
   createdAt      DateTime     @default(now()) @map("created_at")
   organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  numericId      BigInt       @unique @default(dbgenerated("nextval('global_numeric_id_seq'::regclass)")) @map("numeric_id")
 
   @@unique([organizationId, ruleKey, subjectKey])
   @@index([organizationId, createdAt])
@@ -1038,6 +1071,7 @@ model Pipeline {
   updatedAt      DateTime        @updatedAt @map("updated_at")
   organization   Organization    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   stages         PipelineStage[]
+  numericId      BigInt          @unique @default(dbgenerated("nextval('global_numeric_id_seq'::regclass)")) @map("numeric_id")
 
   @@unique([organizationId, key])
   @@unique([organizationId, id])
@@ -1055,6 +1089,7 @@ model PipelineStage {
   position       Int
   pipeline       Pipeline      @relation(fields: [pipelineId], references: [id], onDelete: Cascade)
   cycles         RefillCycle[]
+  numericId      BigInt        @unique @default(dbgenerated("nextval('global_numeric_id_seq'::regclass)")) @map("numeric_id")
 
   @@unique([organizationId, id])
   @@index([pipelineId, systemStatus])
@@ -1077,6 +1112,7 @@ model CustomProperty {
   createdAt      DateTime     @default(now()) @map("created_at")
   updatedAt      DateTime     @updatedAt @map("updated_at")
   organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  numericId      BigInt       @unique @default(dbgenerated("nextval('global_numeric_id_seq'::regclass)")) @map("numeric_id")
 
   @@unique([organizationId, entity, key])
   @@unique([organizationId, id])
@@ -1110,6 +1146,7 @@ model WhatsappInbound {
   organization      Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   patient           Patient?     @relation(fields: [organizationId, patientId], references: [organizationId, id], onDelete: Cascade)
   cycle             RefillCycle? @relation(fields: [organizationId, cycleId], references: [organizationId, id], onDelete: Cascade)
+  numericId         BigInt       @unique @default(dbgenerated("nextval('global_numeric_id_seq'::regclass)")) @map("numeric_id")
 
   @@unique([providerMessageId])
   @@unique([organizationId, id])
@@ -1127,6 +1164,7 @@ model WhatsappAccount {
   createdAt      DateTime     @default(now()) @map("created_at")
   updatedAt      DateTime     @updatedAt @map("updated_at")
   organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  numericId      BigInt       @unique @default(dbgenerated("nextval('global_numeric_id_seq'::regclass)")) @map("numeric_id")
 
   @@map("whatsapp_accounts")
 }
@@ -1144,6 +1182,7 @@ model TelegramAccount {
   createdAt        DateTime     @default(now()) @map("created_at")
   updatedAt        DateTime     @updatedAt @map("updated_at")
   organization     Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  numericId        BigInt       @unique @default(dbgenerated("nextval('global_numeric_id_seq'::regclass)")) @map("numeric_id")
 
   @@map("telegram_accounts")
 }
@@ -1157,6 +1196,7 @@ model TelegramLink {
   linkedAt       DateTime     @default(now()) @map("linked_at")
   organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   patient        Patient      @relation(fields: [organizationId, patientId], references: [organizationId, id], onDelete: Cascade)
+  numericId      BigInt       @unique @default(dbgenerated("nextval('global_numeric_id_seq'::regclass)")) @map("numeric_id")
 
   @@unique([organizationId, patientId])
   @@index([organizationId, chatId])
@@ -1175,6 +1215,7 @@ model TelegramLinkToken {
   createdAt      DateTime     @default(now()) @map("created_at")
   organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   patient        Patient      @relation(fields: [organizationId, patientId], references: [organizationId, id], onDelete: Cascade)
+  numericId      BigInt       @unique @default(dbgenerated("nextval('global_numeric_id_seq'::regclass)")) @map("numeric_id")
 
   @@index([organizationId, patientId])
   @@map("telegram_link_tokens")

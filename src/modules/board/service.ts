@@ -6,13 +6,14 @@ import { accessibleBranchIds } from '../../infra/branch-scope.js';
 import { ApiError } from '../../infra/errors.js';
 import { withTenant } from '../../infra/prisma.js';
 import { findOrCreateSetting } from '../../infra/settings.js';
+import { paginate } from '../../infra/pagination.js';
 import type { z } from 'zod';
 import type { boardColumnsQuery, boardQuery, cycleListQuery } from '../../schemas/board.js';
 
 type Tx = Prisma.TransactionClient;
 type Tenant = NonNullable<Express.Request['tenant']>;
 type BoardFilters = z.infer<typeof boardQuery>;
-type BoardListFilters = z.infer<typeof boardColumnsQuery> | z.infer<typeof cycleListQuery>;
+type BoardListFilters = z.infer<typeof boardColumnsQuery>;
 
 export type BoardSettings = {
   dueSoonDays: number;
@@ -411,12 +412,17 @@ const sortMap: Record<string, (dir: 'asc' | 'desc') => Prisma.RefillCycleOrderBy
   medication: (dir) => ({ treatment: { medication: { genericName: dir } } }),
 };
 
+/**
+ * The table (unlike the kanban board) always groups by branch first, so a
+ * multi-branch user reads one sucursal at a time; any user sort applies
+ * within that grouping.
+ */
 function tableOrder(sort?: string[]): Prisma.RefillCycleOrderByWithRelationInput[] {
-  if (!sort?.length) return tableOrderBy;
-  return [...sort.map((part) => {
+  const rest: Prisma.RefillCycleOrderByWithRelationInput[] = !sort?.length ? tableOrderBy : [...sort.map((part) => {
     const [field, dir] = part.split(':') as [string, 'asc' | 'desc'];
     return sortMap[field]!(dir);
-  }), { id: 'asc' }];
+  }), { id: 'asc' as const }];
+  return [{ branchId: 'asc' as const }, ...rest];
 }
 
 /**
@@ -461,20 +467,20 @@ export async function tableData(tenant: Tenant, query: z.infer<typeof cycleListQ
           },
         ],
       };
-    const rows = await tx.refillCycle.findMany({
+    const paged = await paginate(query, (args) => tx.refillCycle.findMany({
       where,
       include: cardInclude,
       orderBy: tableOrder(query.sort),
-      take: query.limit + 1,
-      ...(query.cursor ? { cursor: { organizationId_id: { organizationId: tenant.organizationId, id: query.cursor } }, skip: 1 } : {}),
-    });
-    const hasMore = rows.length > query.limit;
-    const page = hasMore ? rows.slice(0, query.limit) : rows;
-    const data = await presentCycleCards(tx, page, settings, today);
+      take: args.take,
+      skip: args.skip,
+    }), () => tx.refillCycle.count({ where }));
+    const data = await presentCycleCards(tx, paged.data, settings, today);
     return {
       status: query.status ?? null,
       data,
-      next_cursor: hasMore ? data.at(-1)!.cycle_id : null,
+      total: paged.total,
+      page: paged.page,
+      rows: paged.rows,
     };
   });
 }

@@ -8,6 +8,7 @@ const treatmentFields = {
   patient_id: z.string().min(1),
   medication_id: z.string().min(1),
   branch_id: z.string().min(1),
+  name: optionalText(160),
   responsible_user_id: z.string().min(1).nullable().optional(),
   dose_per_intake: z.coerce.number().positive().max(99999.999),
   intakes_per_day: z.coerce.number().positive().max(999.999),

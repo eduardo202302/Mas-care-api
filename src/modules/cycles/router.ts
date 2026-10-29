@@ -3,7 +3,7 @@ import type { Prisma } from '@prisma/client';
 import { z } from 'zod';
 import { puede } from '../../domain/permissions.js';
 import { ApiError } from '../../infra/errors.js';
-import { canAccessBranch } from '../../infra/patient-access.js';
+import { canAccessBranch, findAccessiblePatient } from '../../infra/patient-access.js';
 import { requiredBranchScope } from '../../infra/branch-scope.js';
 import { withTenant } from '../../infra/prisma.js';
 import { resolveTenant } from '../../infra/tenant.js';
@@ -343,20 +343,67 @@ cyclesRouter.get('/eligible-treatments', validateQuery(eligibleTreatmentsQuery),
   res.json({ data });
 });
 
-/** A cycle is always born from a treatment; there are no loose cycles. */
+/**
+ * A cycle is always born from a treatment; there are no loose cycles. When the
+ * request carries a `treatment_id` it attaches to that existing treatment (the
+ * eligible-treatments flow). Otherwise it creates the treatment inline from the
+ * patient/medication/branch/quantity the form collected, so the person filling
+ * "Nuevo Ciclo" never has to manage a separate treatment record. Dosing fields
+ * aren't collected by that form, so they get the minimal default of once a day.
+ */
 cyclesRouter.post('/', validateBody(cycleCreateInput), async (req, res) => {
   const tenant = req.tenant!;
   requirePermission(tenant.role, 'treatments:write');
   const input = req.body as z.infer<typeof cycleCreateInput>;
   const result = await withTenant(tenant.organizationId, async (tx) => {
-    const treatment = await tx.treatment.findFirst({ where: { AND: [{ id: input.treatment_id }, await requiredBranchScope(tx, tenant)] } });
-    if (!treatment) throw new ApiError(404, 'NOT_FOUND', 'Treatment not found');
-    if (treatment.status !== 'active') throw new ApiError(409, 'INVALID_STATUS', 'Only active treatments can have cycles');
-    if (await tx.refillCycle.findFirst({ where: { treatmentId: treatment.id, closedAt: null, status: { in: [...OPEN] } } })) {
-      throw new ApiError(409, 'OPEN_CYCLE_EXISTS', 'The treatment already has an open cycle');
-    }
     const settings = await settingsFor(tx, tenant.organizationId);
     const today = todayOnly();
+    let treatment = input.treatment_id
+      ? await tx.treatment.findFirst({ where: { AND: [{ id: input.treatment_id }, await requiredBranchScope(tx, tenant)] } })
+      : null;
+    if (input.treatment_id && !treatment) throw new ApiError(404, 'NOT_FOUND', 'Treatment not found');
+    if (treatment) {
+      if (treatment.status !== 'active') throw new ApiError(409, 'INVALID_STATUS', 'Only active treatments can have cycles');
+      if (await tx.refillCycle.findFirst({ where: { treatmentId: treatment.id, closedAt: null, status: { in: [...OPEN] } } })) {
+        throw new ApiError(409, 'OPEN_CYCLE_EXISTS', 'The treatment already has an open cycle');
+      }
+    } else {
+      if (!await findAccessiblePatient(tx, tenant, input.patient_id!, { archivedAt: null })) {
+        throw new ApiError(404, 'NOT_FOUND', 'Patient not found');
+      }
+      if (!await canAccessBranch(tx, tenant, input.branch_id!)) throw new ApiError(404, 'NOT_FOUND', 'Branch not found');
+      const medication = await tx.medication.findFirst({ where: { id: input.medication_id!, archivedAt: null }, select: { id: true } });
+      if (!medication) throw new ApiError(400, 'INVALID_MEDICATION', 'Medication not found');
+      if (input.responsible_user_id) {
+        const member = await tx.member.findFirst({ where: { organizationId: tenant.organizationId, userId: input.responsible_user_id }, select: { id: true } });
+        if (!member) throw new ApiError(400, 'INVALID_RESPONSIBLE_USER', 'Responsible user must belong to this organization');
+      }
+      treatment = await tx.treatment.create({
+        data: {
+          organizationId: tenant.organizationId,
+          patientId: input.patient_id!,
+          medicationId: input.medication_id!,
+          branchId: input.branch_id!,
+          name: input.name ?? null,
+          responsibleUserId: input.responsible_user_id ?? null,
+          dosePerIntake: 1,
+          intakesPerDay: 1,
+          quantityPerCycle: input.quantity_per_cycle!,
+          startDate: today,
+          status: 'active',
+          statusChangedAt: new Date(),
+          coverageEndOn: input.coverage_end_on ? dateOnly(input.coverage_end_on) : null,
+          coverageManuallyAdjusted: Boolean(input.coverage_end_on),
+        } as Prisma.TreatmentUncheckedCreateInput,
+      });
+      await tx.activity.create({
+        data: {
+          organizationId: tenant.organizationId, patientId: treatment.patientId, treatmentId: treatment.id,
+          type: 'treatment_created', body: '', metadata: {}, authorId: tenant.userId,
+        },
+      });
+      await record(tx, { organizationId: tenant.organizationId, actorId: tenant.userId, action: 'treatment.create', subjectId: treatment.id });
+    }
     const expectedOn = treatment.coverageEndOn ?? today;
     const cycle = await tx.refillCycle.create({
       data: {

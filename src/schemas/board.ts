@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { derivedStatuses } from '../domain/coverage.js';
 import { boardColumns, refillCycleStatuses } from '../domain/cycleTransitions.js';
+import { pagingFields } from '../infra/pagination.js';
 
 const isoDate = z.string().date();
 
@@ -44,11 +45,21 @@ export const cyclePriorities = ['low', 'medium', 'high', 'urgent'] as const;
 export const cycleTypes = ['regular', 'urgent', 'special'] as const;
 
 export const cycleCreateInput = z.object({
-  treatment_id: z.string().min(1),
+  treatment_id: z.string().min(1).optional(),
+  patient_id: z.string().min(1).optional(),
+  medication_id: z.string().min(1).optional(),
+  branch_id: z.string().min(1).optional(),
+  name: z.string().trim().min(1).max(160).nullable().optional(),
+  responsible_user_id: z.string().min(1).nullable().optional(),
+  quantity_per_cycle: z.coerce.number().positive().max(99999999.99).optional(),
+  coverage_end_on: isoDate.optional(),
   status: z.enum(['to_notify', 'notified', 'confirmed', 'prepared']).default('to_notify'),
   priority: z.enum(cyclePriorities).optional(),
   type: z.enum(cycleTypes).optional(),
-}).strict();
+}).strict().refine(
+  (value) => value.treatment_id || (value.patient_id && value.medication_id && value.branch_id && value.quantity_per_cycle),
+  'Falta el tratamiento o los datos para crearlo (paciente, producto, compañía y cantidad)',
+);
 
 export const eligibleTreatmentsQuery = z.object({
   q: z.string().trim().max(100).optional(),
@@ -95,6 +106,5 @@ export const cycleListQuery = z.object({
   ...boardFilterFields,
   ...cycleTableFields,
   status: z.enum(refillCycleStatuses).optional(),
-  cursor: z.string().min(1).optional(),
-  limit: z.coerce.number().int().min(1).max(100).default(30),
+  ...pagingFields,
 }).strict();

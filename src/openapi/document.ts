@@ -62,7 +62,7 @@ const Branch = registry.register('Branch', branchSchema);
 const BranchInput = registry.register('BranchInput', branchInput);
 const BranchPatch = registry.register('BranchPatch', branchInput.partial().strict());
 const Patient = registry.register('Patient', z.object({
-  id: z.string(), organizationId: z.string(), primaryBranchId: z.string(), fullName: z.string(),
+  id: z.string(), numericId: z.string(), organizationId: z.string(), primaryBranchId: z.string(), fullName: z.string(),
   documentId: z.string().nullable(), birthDate: z.date().nullable(), phone: z.string().nullable(),
   phoneHasWhatsapp: z.boolean(), email: z.string().nullable(), address: z.string().nullable(), zone: z.string().nullable(),
   preferredChannel: z.enum(['whatsapp', 'call', 'sms']), reminderConsent: z.boolean(), reminderConsentAt: z.date().nullable(),
@@ -105,7 +105,8 @@ const UserPin = registry.register('UserPin', z.object({
   pinUpdatedAt: z.date(),
 }));
 const Treatment = registry.register('Treatment', z.object({
-  id: z.string(), organizationId: z.string(), patientId: z.string(), medicationId: z.string(), branchId: z.string(),
+  id: z.string(), numericId: z.string(), organizationId: z.string(), patientId: z.string(), medicationId: z.string(), branchId: z.string(),
+  name: z.string().nullable(),
   responsibleUserId: z.string().nullable(), dosePerIntake: z.union([z.string(), z.number()]),
   intakesPerDay: z.union([z.string(), z.number()]), quantityPerCycle: z.union([z.string(), z.number()]),
   startDate: z.date(), endDate: z.date().nullable(), prescriberName: z.string().nullable(),
@@ -694,7 +695,7 @@ registry.registerPath({
 registry.registerPath({
   method: 'get', path: '/api/v1/cycles', summary: 'Cycle table view with the same filters and order as the board', security: [{ cookieAuth: [] }],
   request: { query: CycleListQuery },
-  responses: { 200: { description: 'Cycle rows', content: { 'application/json': { schema: z.object({ status: z.string().nullable(), data: z.array(BoardCard), next_cursor: z.string().nullable() }) } } }, 403: err('treatments:read required') },
+  responses: { 200: { description: 'Cycle rows, page-paginated and branch-first ordered', content: { 'application/json': { schema: z.object({ status: z.string().nullable(), data: z.array(BoardCard), total: z.number(), page: z.number(), rows: z.number() }) } } }, 403: err('treatments:read required') },
 });
 registry.registerPath({
   method: 'post', path: '/api/v1/cycles/{id}/move', summary: 'Move a cycle between operational board columns', security: [{ cookieAuth: [] }],

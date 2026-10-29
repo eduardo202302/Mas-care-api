@@ -55,8 +55,8 @@ function dateFilters(query: z.infer<typeof patientListQuery>): Prisma.PatientWhe
 
 const patientSortMap: Record<string, string> = { created_at: 'createdAt', full_name: 'fullName', document_id: 'documentId', birth_date: 'birthDate' };
 function patientOrder(sort?: string[]): Prisma.PatientOrderByWithRelationInput[] {
-  if (!sort?.length) return [{ createdAt: 'desc' }, { id: 'desc' }];
-  return [...sort.map((part) => {
+  if (!sort?.length) return [{ primaryBranchId: 'asc' }, { createdAt: 'desc' }, { id: 'desc' }];
+  return [{ primaryBranchId: 'asc' }, ...sort.map((part) => {
     const [field, dir] = part.split(':') as [string, 'asc' | 'desc'];
     return { [patientSortMap[field]!]: dir } as Prisma.PatientOrderByWithRelationInput;
   }), { id: 'desc' }];
