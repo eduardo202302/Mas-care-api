@@ -113,7 +113,11 @@ describe.skipIf(!enabled)('block 3: consolidated dashboard', () => {
     const branchIds = response.body.branches.map((b: { branch_id: string }) => b.branch_id);
     expect(branchIds).toContain(allowedBranch.id);
     expect(branchIds).not.toContain(otherBranch.id);
-    expect(branchIds).toHaveLength(1);
+    // Other test files also grant this shared operator branches, so compare with the real memberships.
+    const memberships = await withTenant(context.organization.id, (tx) => tx.branchMember.findMany({
+      where: { userId: operatorContext.user.id }, select: { branchId: true },
+    }));
+    expect([...branchIds].sort()).toEqual(memberships.map((m) => m.branchId).sort());
   });
 
   it('shows every non-archived organization branch to an owner/admin', async () => {

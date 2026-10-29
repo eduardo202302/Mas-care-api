@@ -1,5 +1,5 @@
 import './db-guard.js';
-import { describe, expect, it } from 'vitest';
+import { afterAll, describe, expect, it } from 'vitest';
 import request from 'supertest';
 import type { Agent } from 'supertest';
 import { app } from '../src/app.js';
@@ -20,6 +20,14 @@ async function login(role: Role, organization = 'a'): Promise<{ agent: Agent; co
 }
 
 describe.skipIf(!enabled)('automation settings and kill-switch', () => {
+  // The test below changes the notice window and the switches; put the defaults back so it can run again.
+  afterAll(async () => {
+    const { agent } = await login('owner');
+    await agent.patch('/api/v1/automation/settings').send({
+      automation_enabled: false, automation_dry_run: true, notice_window_start: '09:00', notice_window_end: '18:00', auto_call_task_without_consent: false,
+    });
+  });
+
   it('only owner/admin can read or change automation settings, and the kill-switch turns automation off', async () => {
     const owner = await login('owner');
 
@@ -68,7 +76,7 @@ describe.skipIf(!enabled)('automation settings and kill-switch', () => {
     expect(orgStillOn.body).toMatchObject({ branch_id: null, automation_enabled: true });
 
     const killed = await owner.agent.post('/api/v1/automation/kill-switch').send({}).expect(200);
-    expect(killed.body).toEqual({ automation_enabled: false, branch_id: null });
+    expect(killed.body).toMatchObject({ automation_enabled: false, branch_id: null, cancelled_messages: expect.any(Number) });
     const afterKill = await owner.agent.get('/api/v1/automation/settings').expect(200);
     expect(afterKill.body.automation_enabled).toBe(false);
 

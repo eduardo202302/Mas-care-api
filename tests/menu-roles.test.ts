@@ -1,4 +1,4 @@
-import { readFileSync } from 'node:fs';
+import { readdirSync, readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import request from 'supertest';
 import { app } from '../src/app.js';
@@ -15,7 +15,11 @@ const view = { canView: true, canCreate: false, canEdit: false, canDelete: false
 
 describe('menu catalog defaults', () => {
   it('matches the rows inserted by the migration', () => {
-    const sql = readFileSync('prisma/migrations/20261027000000_menu_roles/migration.sql', 'utf8');
+    // Later migrations add menu rows, so read every migration, not only the first.
+    const sql = readdirSync('prisma/migrations', { withFileTypes: true })
+      .filter((entry) => entry.isDirectory())
+      .map((entry) => readFileSync(`prisma/migrations/${entry.name}/migration.sql`, 'utf8'))
+      .join('\n');
     for (const seed of menuSeeds) {
       expect(sql).toContain(`'${menuItemId(seed.key)}','${seed.key}','${seed.label}'`);
     }

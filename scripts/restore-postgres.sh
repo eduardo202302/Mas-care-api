@@ -5,4 +5,5 @@ dump_file="$(mktemp)"
 trap 'rm -f "$dump_file"' EXIT HUP INT TERM
 gpg --batch --decrypt --output "$dump_file" "$1"
 pg_restore --list "$dump_file" > /dev/null
-docker compose exec -T postgres pg_restore -U maxcare -d maxcare --clean --if-exists --exit-on-error < "$dump_file"
+: "${DIRECT_URL:?Set DIRECT_URL to the direct (non-pooler) connection string}"
+pg_restore --dbname="$DIRECT_URL" --clean --if-exists --exit-on-error --no-owner "$dump_file"

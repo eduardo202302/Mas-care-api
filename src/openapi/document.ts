@@ -597,6 +597,26 @@ registry.registerPath({
   request: { body: { content: { 'multipart/form-data': { schema: z.object({ file: z.string().openapi({ type: 'string', format: 'binary' }), column_mapping: ColumnMapping }) } } } },
   responses: { 201: { description: 'Import summary and row errors' }, 400: { description: 'Invalid CSV or mapping', content: { 'application/json': { schema: ErrorResponse } } }, 403: { description: 'Owner or admin required', content: { 'application/json': { schema: ErrorResponse } } }, 413: { description: 'File or row limit exceeded', content: { 'application/json': { schema: ErrorResponse } } } },
 });
+registry.registerPath({
+  method: 'post', path: '/api/v1/imports/medications/preview', summary: 'Preview a medication CSV; with column_mapping, validates every row without writing', security: [{ cookieAuth: [] }],
+  request: { body: { content: { 'multipart/form-data': { schema: z.object({ file: z.string().openapi({ type: 'string', format: 'binary' }), column_mapping: ColumnMapping.optional() }) } } } },
+  responses: { 200: { description: 'CSV columns, sample rows and (with mapping) valid/error row counts' }, 403: { description: 'Owner or admin required', content: { 'application/json': { schema: ErrorResponse } } } },
+});
+registry.registerPath({
+  method: 'post', path: '/api/v1/imports/medications', summary: 'Import valid medication rows from a CSV (duplicates by name + presentation are skipped)', security: [{ cookieAuth: [] }],
+  request: { body: { content: { 'multipart/form-data': { schema: z.object({ file: z.string().openapi({ type: 'string', format: 'binary' }), column_mapping: ColumnMapping }) } } } },
+  responses: { 201: { description: 'Import summary and row errors' }, 400: { description: 'Invalid CSV or mapping', content: { 'application/json': { schema: ErrorResponse } } }, 403: { description: 'Owner or admin required', content: { 'application/json': { schema: ErrorResponse } } } },
+});
+registry.registerPath({
+  method: 'get', path: '/api/v1/exports/{entity}/columns', summary: 'List exportable columns for patients, medications or cycles', security: [{ cookieAuth: [] }],
+  request: { params: z.object({ entity: z.enum(['patients', 'medications', 'cycles']) }) },
+  responses: { 200: { description: 'Column keys and headers' }, 403: { description: 'export:csv required', content: { 'application/json': { schema: ErrorResponse } } } },
+});
+registry.registerPath({
+  method: 'post', path: '/api/v1/exports/{entity}', summary: 'Export patients, medications or cycles as CSV or XLSX (audited)', security: [{ cookieAuth: [] }],
+  request: { params: z.object({ entity: z.enum(['patients', 'medications', 'cycles']) }), body: { content: { 'application/json': { schema: z.object({ format: z.enum(['csv', 'xlsx']), columns: z.array(z.string()).min(1) }) } } } },
+  responses: { 200: { description: 'File download' }, 400: { description: 'Unknown column', content: { 'application/json': { schema: ErrorResponse } } }, 403: { description: 'export:csv required', content: { 'application/json': { schema: ErrorResponse } } }, 413: { description: 'Too many rows', content: { 'application/json': { schema: ErrorResponse } } } },
+});
 
 const err = (description: string) => ({ description, content: { 'application/json': { schema: ErrorResponse } } });
 const idParams = z.object({ id: BranchId });
@@ -903,6 +923,118 @@ registry.registerPath({
     413: err('Report would exceed the maximum exportable row count'),
     429: err('Too many export requests from this client'),
   },
+});
+
+// --- Phase 3: messaging worker, outbox, inbound replies and the WhatsApp webhook -------------
+const cookie = [{ cookieAuth: [] }];
+const OutboxQuery = z.object({
+  status: z.enum(['pending', 'sending', 'sent', 'failed', 'cancelled', 'dry_run']).optional(),
+  branch_id: z.string().optional(),
+  cursor: z.string().optional(),
+  limit: z.number().int().optional(),
+});
+registry.registerPath({
+  method: 'get', path: '/api/v1/outbox', summary: 'Queue of automatic messages (pending, dry_run, sent, failed, cancelled), newest first. Requires outbox:view.', security: cookie,
+  request: { query: OutboxQuery },
+  responses: { 200: { description: 'Messages without their text, plus next_cursor' }, 403: err('outbox:view required') },
+});
+registry.registerPath({
+  method: 'post', path: '/api/v1/outbox/{id}/cancel', summary: 'Cancel a pending message. Requires outbox:retry.', security: cookie,
+  request: { params: idParams },
+  responses: { 200: { description: 'Cancelled message' }, 403: err('outbox:retry required'), 404: err('Not found'), 409: err('Only pending messages can be cancelled') },
+});
+registry.registerPath({
+  method: 'post', path: '/api/v1/outbox/{id}/retry', summary: 'Queue a failed or cancelled message again; the worker re-checks everything before sending. Requires outbox:retry.', security: cookie,
+  request: { params: idParams },
+  responses: { 200: { description: 'Message back to pending' }, 403: err('outbox:retry required'), 404: err('Not found'), 409: err('Not failed or cancelled, or the cycle already has a queued message') },
+});
+registry.registerPath({
+  method: 'get', path: '/api/v1/inbound/unassigned', summary: 'Replies that could not be matched to exactly one patient. Requires inbound:assign.', security: cookie,
+  responses: { 200: { description: 'Unassigned replies' }, 403: err('inbound:assign required') },
+});
+registry.registerPath({
+  method: 'post', path: '/api/v1/inbound/{id}/assign', summary: 'Assign an unmatched reply to a patient and process it with the usual rules. Requires inbound:assign.', security: cookie,
+  request: { params: idParams, body: { content: { 'application/json': { schema: z.object({ patient_id: z.string() }) } } } },
+  responses: { 200: { description: 'Assigned and processed' }, 403: err('inbound:assign required'), 404: err('Reply or patient not found'), 409: err('Already assigned') },
+});
+registry.registerPath({
+  method: 'get', path: '/api/v1/patients/{id}/messages', summary: 'Conversation with a patient: automatic notices and replies. Requires outbox:view; every read is audited.', security: cookie,
+  request: { params: idParams, query: z.object({ limit: z.number().int().optional(), before: z.string().optional() }) },
+  responses: { 200: { description: 'Items newest first, plus next_before' }, 403: err('outbox:view required'), 404: err('Patient not found') },
+});
+const PauseBody = z.object({ paused: z.boolean(), reason: z.string().nullable().optional() });
+registry.registerPath({
+  method: 'patch', path: '/api/v1/patients/{id}/automation', summary: 'Pause or resume automatic notices for a patient; pausing cancels pending messages.', security: cookie,
+  request: { params: idParams, body: { content: { 'application/json': { schema: PauseBody } } } },
+  responses: { 200: { description: 'New state and how many messages were cancelled' }, 403: err('patients:write required'), 404: err('Patient not found') },
+});
+registry.registerPath({
+  method: 'patch', path: '/api/v1/treatments/{id}/automation', summary: 'Pause or resume automatic notices for a treatment; pausing cancels pending messages.', security: cookie,
+  request: { params: idParams, body: { content: { 'application/json': { schema: PauseBody } } } },
+  responses: { 200: { description: 'New state and how many messages were cancelled' }, 403: err('treatments:write required'), 404: err('Treatment not found') },
+});
+registry.registerPath({
+  method: 'post', path: '/api/v1/message-templates/{id}/test-send', summary: 'Send an approved template to one number to test it. Requires automation:manage (owner/admin).', security: cookie,
+  request: { params: idParams, body: { content: { 'application/json': { schema: z.object({ phone: z.string() }) } } } },
+  responses: { 200: { description: 'Sent' }, 400: err('Invalid phone'), 403: err('automation:manage required'), 409: err('Template is not approved'), 502: err('The provider rejected the send') },
+});
+registry.registerPath({
+  method: 'get', path: '/api/v1/automation/whatsapp-account', summary: "Whether the organization has its own WhatsApp number connected. The token is never returned.", security: cookie,
+  responses: { 200: { description: 'connected and phone_number_id' }, 403: err('automation:manage required') },
+});
+registry.registerPath({
+  method: 'put', path: '/api/v1/automation/whatsapp-account', summary: "Connect the organization's WhatsApp number (token stored encrypted).", security: cookie,
+  request: { body: { content: { 'application/json': { schema: z.object({ phone_number_id: z.string(), access_token: z.string() }) } } } },
+  responses: { 200: { description: 'Connected' }, 403: err('automation:manage required'), 409: err('Number already used by another organization') },
+});
+registry.registerPath({
+  method: 'delete', path: '/api/v1/automation/whatsapp-account', summary: "Disconnect the organization's WhatsApp number.", security: cookie,
+  responses: { 204: { description: 'Disconnected' }, 403: err('automation:manage required') },
+});
+registry.registerPath({
+  method: 'get', path: '/webhooks/whatsapp', summary: "Meta's webhook URL check: echoes hub.challenge when hub.verify_token matches WA_VERIFY_TOKEN.",
+  request: { query: z.object({ 'hub.mode': z.string(), 'hub.verify_token': z.string(), 'hub.challenge': z.string() }) },
+  responses: { 200: { description: 'The challenge' }, 403: err('Wrong token') },
+});
+registry.registerPath({
+  method: 'post', path: '/webhooks/whatsapp', summary: 'Receives WhatsApp events from Meta. The X-Hub-Signature-256 header (HMAC-SHA256 of the raw body with WA_APP_SECRET) is mandatory; replies are stored and processed by the worker.',
+  request: { headers: z.object({ 'x-hub-signature-256': z.string() }) },
+  responses: { 200: { description: 'Accepted' }, 400: err('Unreadable body'), 401: err('Invalid or missing signature'), 503: err('Webhook not configured (WA_APP_SECRET)') },
+});
+
+// --- Telegram as a second notice channel -------------------------------------------------------
+registry.registerPath({
+  method: 'get', path: '/api/v1/automation/telegram-account', summary: 'Whether the organization has its own Telegram bot connected. The token is never returned.', security: cookie,
+  responses: { 200: { description: 'connected and bot_username' }, 403: err('automation:manage required') },
+});
+registry.registerPath({
+  method: 'put', path: '/api/v1/automation/telegram-account', summary: 'Connect the organization bot (token from @BotFather). Checks the token with Telegram and registers the webhook; token and secret are stored encrypted.', security: cookie,
+  request: { body: { content: { 'application/json': { schema: z.object({ bot_token: z.string() }) } } } },
+  responses: { 200: { description: 'Connected' }, 400: err('Telegram did not accept the token'), 403: err('automation:manage required'), 409: err('Bot already connected to another organization') },
+});
+registry.registerPath({
+  method: 'delete', path: '/api/v1/automation/telegram-account', summary: 'Disconnect the bot and unlink every patient.', security: cookie,
+  responses: { 204: { description: 'Disconnected' }, 403: err('automation:manage required') },
+});
+registry.registerPath({
+  method: 'post', path: '/api/v1/patients/{id}/telegram-link', summary: 'Create a single-use link (7 days) the patient opens in Telegram to link their chat. Shown once.', security: cookie,
+  request: { params: idParams },
+  responses: { 201: { description: 'url and expires_at' }, 403: err('patients:write required'), 404: err('Patient not found'), 409: err('The organization has no Telegram bot') },
+});
+registry.registerPath({
+  method: 'get', path: '/api/v1/patients/{id}/telegram', summary: 'Whether the bot is connected and the patient linked a chat.', security: cookie,
+  request: { params: idParams },
+  responses: { 200: { description: 'bot_connected, linked, linked_at' }, 404: err('Patient not found') },
+});
+registry.registerPath({
+  method: 'delete', path: '/api/v1/patients/{id}/telegram', summary: 'Unlink the patient chat and cancel pending Telegram messages.', security: cookie,
+  request: { params: idParams },
+  responses: { 204: { description: 'Unlinked' }, 403: err('patients:write required'), 404: err('Patient not found') },
+});
+registry.registerPath({
+  method: 'post', path: '/webhooks/telegram/{key}', summary: 'Receives Telegram updates. The path key identifies the organization bot and the X-Telegram-Bot-Api-Secret-Token header must match its secret.',
+  request: { params: z.object({ key: z.string() }), headers: z.object({ 'x-telegram-bot-api-secret-token': z.string() }) },
+  responses: { 200: { description: 'Accepted' }, 400: err('Unreadable body'), 401: err('Missing or wrong secret'), 404: err('Unknown key') },
 });
 
 export const openApiDocument = new OpenApiGeneratorV3(registry.definitions).generateDocument({

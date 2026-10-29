@@ -7,20 +7,23 @@ import type {
 } from '../../domain/messaging/provider.js';
 
 /**
- * PAUSED (Fase 3, messaging): see src/domain/noticePolicy.ts. Nothing in the
- * app imports this module yet — it is never instantiated, so it cannot send
- * anything, real or fake.
- *
- * Default provider outside production: never calls Meta, always "succeeds"
- * with a synthetic message id so the rest of the pipeline (outbox, notices,
- * activities) can be exercised in dev, CI and tests without a real
- * WhatsApp account. `simulateDelivery`/`simulateRead`/`simulateReply` (added
- * once the inbound webhook pipeline exists) let tests and the dev-only
- * endpoint drive delivery events through that same real pipeline.
+ * Default provider outside production: never calls Meta, never touches the
+ * network. `sent` records what would have gone out (templates and rendered
+ * variables, kept in memory only) and `failWith` lets tests simulate provider
+ * failures. Webhook parsing is not simulated yet; the inbound pipeline adds
+ * that with the webhook.
  */
 export class FakeProvider implements MessagingProvider {
+  readonly sent: OutboundTemplateMessage[] = [];
+  /** When set, every send throws it (permanent or transient, as the test needs). */
+  failWith: Error | null = null;
+  /** Artificial latency, so concurrency tests can overlap two workers. */
+  delayMs = 0;
+
   async sendTemplate(message: OutboundTemplateMessage): Promise<SendResult> {
-    void message;
+    if (this.delayMs) await new Promise((resolve) => setTimeout(resolve, this.delayMs));
+    if (this.failWith) throw this.failWith;
+    this.sent.push(message);
     return { providerMessageId: `fake-${randomUUID()}` };
   }
 

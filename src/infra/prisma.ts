@@ -9,7 +9,7 @@ const tenantModels = new Set([
   'PatientConsent', 'Medication', 'Treatment', 'RefillCycle', 'Delivery', 'Activity', 'SavedView',
   'Task', 'MessageTemplate', 'ImportJob', 'Role', 'RoleMenuItem',
   'MedicationStockMark', 'Incident', 'OutboxMessage', 'Notice',
-  'PatientTransfer', 'PatientTransferTreatment',
+  'PatientTransfer', 'PatientTransferTreatment', 'AutomationRule', 'AutomationRun', 'Pipeline', 'PipelineStage', 'CustomProperty', 'WhatsappInbound', 'WhatsappAccount', 'TelegramAccount', 'TelegramLink', 'TelegramLinkToken',
 ]);
 const whereOperations = new Set([
   'findFirst', 'findFirstOrThrow', 'findMany', 'findUnique', 'findUniqueOrThrow',

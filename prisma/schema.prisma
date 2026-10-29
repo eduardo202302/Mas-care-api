@@ -9,16 +9,16 @@ datasource db {
 }
 
 model Branch {
-  id               String            @id @default(cuid())
-  organizationId   String            @map("organization_id")
+  id               String                @id @default(cuid())
+  organizationId   String                @map("organization_id")
   name             String
-  labelColor       String            @default("#CDE9EC") @map("label_color")
+  labelColor       String                @default("#CDE9EC") @map("label_color")
   phone            String?
   address          String?
-  openingHours     Json?             @map("opening_hours")
-  archivedAt       DateTime?         @map("archived_at")
-  createdAt        DateTime          @default(now()) @map("created_at")
-  organization     Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  openingHours     Json?                 @map("opening_hours")
+  archivedAt       DateTime?             @map("archived_at")
+  createdAt        DateTime              @default(now()) @map("created_at")
+  organization     Organization          @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   members          BranchMember[]
   patients         Patient[]
   treatments       Treatment[]
@@ -55,7 +55,7 @@ model Setting {
   branchId                   String?      @map("branch_id")
   upcomingDays               Int          @default(7) @map("upcoming_days")
   dueSoonDays                Int          @default(3) @map("due_soon_days")
-  noticeLeadDays              Int          @default(5) @map("notice_lead_days")
+  noticeLeadDays             Int          @default(5) @map("notice_lead_days")
   maxNoticeAttempts          Int          @default(3) @map("max_notice_attempts")
   retryAfterHours            Int          @default(24) @map("retry_after_hours")
   prescriptionWarningDays    Int          @default(15) @map("prescription_warning_days")
@@ -66,7 +66,7 @@ model Setting {
   noticeWindowEnd            String       @default("18:00") @map("notice_window_end")
   autoCallTaskWithoutConsent Boolean      @default(false) @map("auto_call_task_without_consent")
   defaultCountryCode         String       @default("DO") @map("default_country_code")
-  organization                Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  organization               Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
 
   @@unique([organizationId, branchId])
   @@index([organizationId])
@@ -88,37 +88,43 @@ model AuditLog {
 }
 
 model Patient {
-  id                String             @id @default(cuid())
-  organizationId    String             @map("organization_id")
-  primaryBranchId   String             @map("primary_branch_id")
-  fullName          String             @map("full_name")
-  documentId        String?            @map("document_id")
-  birthDate         DateTime?          @map("birth_date") @db.Date
-  phone             String?
-  phoneHasWhatsapp  Boolean            @default(false) @map("phone_has_whatsapp")
-  email             String?
-  address           String?
-  zone              String?
-  preferredChannel  ContactChannel     @default(whatsapp) @map("preferred_channel")
-  reminderConsent   Boolean            @default(false) @map("reminder_consent")
-  reminderConsentAt DateTime?          @map("reminder_consent_at")
-  careNotes         String?            @map("care_notes") @db.Text
-  responsibleUserId String?            @map("responsible_user_id")
-  createdBy         String             @map("created_by")
-  createdAt         DateTime           @default(now()) @map("created_at")
-  archivedAt        DateTime?          @map("archived_at")
-  primaryBranch     Branch             @relation(fields: [organizationId, primaryBranchId], references: [organizationId, id])
-  responsibleUser   User?              @relation("PatientResponsible", fields: [responsibleUserId], references: [id], onDelete: SetNull)
-  creator           User               @relation("PatientCreator", fields: [createdBy], references: [id], onDelete: Restrict)
-  caregivers        PatientCaregiver[]
-  consents          PatientConsent[]
-  activities        Activity[]
-  treatments        Treatment[]
-  tasks             Task[]
-  incidents         Incident[]
-  outboxMessages    OutboxMessage[]
-  notices           Notice[]
-  transfers         PatientTransfer[]
+  id                     String              @id @default(cuid())
+  organizationId         String              @map("organization_id")
+  primaryBranchId        String              @map("primary_branch_id")
+  fullName               String              @map("full_name")
+  documentId             String?             @map("document_id")
+  birthDate              DateTime?           @map("birth_date") @db.Date
+  phone                  String?
+  phoneHasWhatsapp       Boolean             @default(false) @map("phone_has_whatsapp")
+  email                  String?
+  address                String?
+  zone                   String?
+  preferredChannel       ContactChannel      @default(whatsapp) @map("preferred_channel")
+  reminderConsent        Boolean             @default(false) @map("reminder_consent")
+  reminderConsentAt      DateTime?           @map("reminder_consent_at")
+  careNotes              String?             @map("care_notes") @db.Text
+  responsibleUserId      String?             @map("responsible_user_id")
+  createdBy              String              @map("created_by")
+  createdAt              DateTime            @default(now()) @map("created_at")
+  archivedAt             DateTime?           @map("archived_at")
+  customValues           Json                @default("{}") @map("custom_values")
+  automationPaused       Boolean             @default(false) @map("automation_paused")
+  automationPausedReason String?             @map("automation_paused_reason")
+  primaryBranch          Branch              @relation(fields: [organizationId, primaryBranchId], references: [organizationId, id])
+  responsibleUser        User?               @relation("PatientResponsible", fields: [responsibleUserId], references: [id], onDelete: SetNull)
+  creator                User                @relation("PatientCreator", fields: [createdBy], references: [id], onDelete: Restrict)
+  caregivers             PatientCaregiver[]
+  consents               PatientConsent[]
+  activities             Activity[]
+  treatments             Treatment[]
+  tasks                  Task[]
+  incidents              Incident[]
+  outboxMessages         OutboxMessage[]
+  notices                Notice[]
+  whatsappInbound        WhatsappInbound[]
+  telegramLinks          TelegramLink[]
+  telegramLinkTokens     TelegramLinkToken[]
+  transfers              PatientTransfer[]
 
   @@unique([organizationId, id])
   @@index([organizationId, documentId])
@@ -133,6 +139,7 @@ enum ContactChannel {
   whatsapp
   call
   sms
+  telegram
 }
 
 enum OrganizationStatus {
@@ -163,6 +170,9 @@ enum ActivityType {
   cycle_moved
   incident
   transfer
+  automation
+  email
+  meeting
 }
 
 model PatientCaregiver {
@@ -198,18 +208,18 @@ model PatientConsent {
 }
 
 model Medication {
-  id               String       @id @default(cuid())
-  organizationId   String       @map("organization_id")
-  brandName        String?      @map("brand_name")
-  genericName      String?      @map("generic_name")
-  activeIngredient String?      @map("active_ingredient")
+  id               String                @id @default(cuid())
+  organizationId   String                @map("organization_id")
+  brandName        String?               @map("brand_name")
+  genericName      String?               @map("generic_name")
+  activeIngredient String?               @map("active_ingredient")
   presentation     String
-  doseUnit         String       @default("tablet") @map("dose_unit")
-  unitsPerPackage  Decimal?     @map("units_per_package") @db.Decimal(8, 2)
-  createdAt        DateTime     @default(now()) @map("created_at")
-  updatedAt        DateTime     @updatedAt @map("updated_at")
-  archivedAt       DateTime?    @map("archived_at")
-  organization     Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  doseUnit         String                @default("tablet") @map("dose_unit")
+  unitsPerPackage  Decimal?              @map("units_per_package") @db.Decimal(8, 2)
+  createdAt        DateTime              @default(now()) @map("created_at")
+  updatedAt        DateTime              @updatedAt @map("updated_at")
+  archivedAt       DateTime?             @map("archived_at")
+  organization     Organization          @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   treatments       Treatment[]
   stockMarks       MedicationStockMark[]
 
@@ -260,37 +270,40 @@ enum TaskStatus {
 enum MessageChannel {
   whatsapp
   call
+  telegram
 }
 
 model Treatment {
-  id                       String          @id @default(cuid())
-  organizationId           String          @map("organization_id")
-  patientId                String          @map("patient_id")
-  medicationId             String          @map("medication_id")
-  branchId                 String          @map("branch_id")
-  responsibleUserId        String?         @map("responsible_user_id")
-  dosePerIntake            Decimal         @map("dose_per_intake") @db.Decimal(8, 3)
-  intakesPerDay            Decimal         @map("intakes_per_day") @db.Decimal(6, 3)
-  quantityPerCycle         Decimal         @map("quantity_per_cycle") @db.Decimal(10, 2)
-  startDate                DateTime        @map("start_date") @db.Date
-  endDate                  DateTime?       @map("end_date") @db.Date
-  prescriberName           String?         @map("prescriber_name")
-  prescriptionExpiresOn    DateTime?       @map("prescription_expires_on") @db.Date
-  status                   TreatmentStatus @default(active)
-  statusReason             String?         @map("status_reason") @db.Text
-  statusChangedAt          DateTime?       @map("status_changed_at")
-  lastDeliveryOn           DateTime?       @map("last_delivery_on") @db.Date
-  coverageEndOn            DateTime?       @map("coverage_end_on") @db.Date
-  coverageManuallyAdjusted Boolean         @default(false) @map("coverage_manually_adjusted")
-  coverageAdjustReason     String?         @map("coverage_adjust_reason") @db.Text
-  notes                    String?         @db.Text
-  createdAt                DateTime        @default(now()) @map("created_at")
-  updatedAt                DateTime        @updatedAt @map("updated_at")
-  organization             Organization    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  patient                  Patient         @relation(fields: [patientId], references: [id], onDelete: Cascade)
-  medication               Medication      @relation(fields: [medicationId], references: [id], onDelete: Restrict)
-  branch                   Branch          @relation(fields: [branchId], references: [id], onDelete: Restrict)
-  responsibleUser          User?           @relation("TreatmentResponsible", fields: [responsibleUserId], references: [id], onDelete: SetNull)
+  id                       String                     @id @default(cuid())
+  organizationId           String                     @map("organization_id")
+  patientId                String                     @map("patient_id")
+  medicationId             String                     @map("medication_id")
+  branchId                 String                     @map("branch_id")
+  responsibleUserId        String?                    @map("responsible_user_id")
+  dosePerIntake            Decimal                    @map("dose_per_intake") @db.Decimal(8, 3)
+  intakesPerDay            Decimal                    @map("intakes_per_day") @db.Decimal(6, 3)
+  quantityPerCycle         Decimal                    @map("quantity_per_cycle") @db.Decimal(10, 2)
+  startDate                DateTime                   @map("start_date") @db.Date
+  endDate                  DateTime?                  @map("end_date") @db.Date
+  prescriberName           String?                    @map("prescriber_name")
+  prescriptionExpiresOn    DateTime?                  @map("prescription_expires_on") @db.Date
+  status                   TreatmentStatus            @default(active)
+  statusReason             String?                    @map("status_reason") @db.Text
+  statusChangedAt          DateTime?                  @map("status_changed_at")
+  lastDeliveryOn           DateTime?                  @map("last_delivery_on") @db.Date
+  coverageEndOn            DateTime?                  @map("coverage_end_on") @db.Date
+  coverageManuallyAdjusted Boolean                    @default(false) @map("coverage_manually_adjusted")
+  coverageAdjustReason     String?                    @map("coverage_adjust_reason") @db.Text
+  notes                    String?                    @db.Text
+  customValues             Json                       @default("{}") @map("custom_values")
+  automationPaused         Boolean                    @default(false) @map("automation_paused")
+  createdAt                DateTime                   @default(now()) @map("created_at")
+  updatedAt                DateTime                   @updatedAt @map("updated_at")
+  organization             Organization               @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  patient                  Patient                    @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  medication               Medication                 @relation(fields: [medicationId], references: [id], onDelete: Restrict)
+  branch                   Branch                     @relation(fields: [branchId], references: [id], onDelete: Restrict)
+  responsibleUser          User?                      @relation("TreatmentResponsible", fields: [responsibleUserId], references: [id], onDelete: SetNull)
   cycles                   RefillCycle[]
   deliveries               Delivery[]
   activities               Activity[]
@@ -323,9 +336,11 @@ model RefillCycle {
   version           Int               @default(1)
   noticeAttempts    Int               @default(0) @map("notice_attempts")
   closedAt          DateTime?         @map("closed_at")
+  stageId           String?           @map("stage_id")
   createdAt         DateTime          @default(now()) @map("created_at")
   updatedAt         DateTime          @updatedAt @map("updated_at")
   organization      Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  stage             PipelineStage?    @relation(fields: [stageId], references: [id], onDelete: Restrict)
   treatment         Treatment         @relation(fields: [treatmentId], references: [id], onDelete: Cascade)
   branch            Branch            @relation(fields: [branchId], references: [id], onDelete: Restrict)
   deliveries        Delivery[]
@@ -334,6 +349,7 @@ model RefillCycle {
   incidents         Incident[]
   outboxMessages    OutboxMessage[]
   notices           Notice[]
+  whatsappInbound   WhatsappInbound[]
 
   @@unique([organizationId, id])
   @@index([organizationId, treatmentId, status])
@@ -341,6 +357,7 @@ model RefillCycle {
   @@index([organizationId, branchId])
   @@index([organizationId, branchId, status, closedAt])
   @@index([organizationId, branchId, status, boardPosition])
+  @@index([organizationId, stageId])
   @@map("refill_cycles")
 }
 
@@ -360,31 +377,31 @@ enum OutboxStatus {
  * `FOR UPDATE SKIP LOCKED` so two worker replicas never send the same row.
  */
 model OutboxMessage {
-  id                String        @id @default(cuid())
-  organizationId    String        @map("organization_id")
-  branchId          String        @map("branch_id")
-  patientId         String        @map("patient_id")
-  treatmentId       String        @map("treatment_id")
-  cycleId           String        @map("cycle_id")
-  templateId        String        @map("template_id")
+  id                String          @id @default(cuid())
+  organizationId    String          @map("organization_id")
+  branchId          String          @map("branch_id")
+  patientId         String          @map("patient_id")
+  treatmentId       String          @map("treatment_id")
+  cycleId           String          @map("cycle_id")
+  templateId        String          @map("template_id")
   channel           MessageChannel
-  attemptNumber     Int           @map("attempt_number")
-  dedupeKey         String        @map("dedupe_key")
-  status            OutboxStatus  @default(pending)
-  attempts          Int           @default(0)
-  lastError         String?       @map("last_error") @db.Text
-  lockedAt          DateTime?     @map("locked_at")
-  providerMessageId String?       @map("provider_message_id")
-  scheduledFor      DateTime      @map("scheduled_for")
-  sentAt            DateTime?     @map("sent_at")
-  cancelledAt       DateTime?     @map("cancelled_at")
-  createdAt         DateTime      @default(now()) @map("created_at")
-  updatedAt         DateTime      @updatedAt @map("updated_at")
-  organization      Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  branch            Branch        @relation(fields: [organizationId, branchId], references: [organizationId, id], onDelete: Cascade)
-  patient           Patient       @relation(fields: [organizationId, patientId], references: [organizationId, id], onDelete: Cascade)
-  treatment         Treatment     @relation(fields: [organizationId, treatmentId], references: [organizationId, id], onDelete: Cascade)
-  cycle             RefillCycle   @relation(fields: [organizationId, cycleId], references: [organizationId, id], onDelete: Cascade)
+  attemptNumber     Int             @map("attempt_number")
+  dedupeKey         String          @map("dedupe_key")
+  status            OutboxStatus    @default(pending)
+  attempts          Int             @default(0)
+  lastError         String?         @map("last_error") @db.Text
+  lockedAt          DateTime?       @map("locked_at")
+  providerMessageId String?         @map("provider_message_id")
+  scheduledFor      DateTime        @map("scheduled_for")
+  sentAt            DateTime?       @map("sent_at")
+  cancelledAt       DateTime?       @map("cancelled_at")
+  createdAt         DateTime        @default(now()) @map("created_at")
+  updatedAt         DateTime        @updatedAt @map("updated_at")
+  organization      Organization    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  branch            Branch          @relation(fields: [organizationId, branchId], references: [organizationId, id], onDelete: Cascade)
+  patient           Patient         @relation(fields: [organizationId, patientId], references: [organizationId, id], onDelete: Cascade)
+  treatment         Treatment       @relation(fields: [organizationId, treatmentId], references: [organizationId, id], onDelete: Cascade)
+  cycle             RefillCycle     @relation(fields: [organizationId, cycleId], references: [organizationId, id], onDelete: Cascade)
   template          MessageTemplate @relation(fields: [organizationId, templateId], references: [organizationId, id], onDelete: Restrict)
   notice            Notice?
 
@@ -408,25 +425,27 @@ enum NoticeStatus {
   replied
 }
 
-/** Delivery-tracked record of one notice actually sent (or attempted). */
+/**
+ * Delivery-tracked record of one notice actually sent (or attempted).
+ */
 model Notice {
-  id             String       @id @default(cuid())
-  organizationId String       @map("organization_id")
-  outboxId       String       @unique @map("outbox_id")
-  cycleId        String       @map("cycle_id")
-  patientId      String       @map("patient_id")
+  id             String        @id @default(cuid())
+  organizationId String        @map("organization_id")
+  outboxId       String        @unique @map("outbox_id")
+  cycleId        String        @map("cycle_id")
+  patientId      String        @map("patient_id")
   mode           NoticeMode
-  status         NoticeStatus @default(sent)
-  attemptNumber  Int          @map("attempt_number")
-  sentAt         DateTime     @default(now()) @map("sent_at")
-  deliveredAt    DateTime?    @map("delivered_at")
-  readAt         DateTime?    @map("read_at")
-  repliedAt      DateTime?    @map("replied_at")
-  failedAt       DateTime?    @map("failed_at")
-  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  status         NoticeStatus  @default(sent)
+  attemptNumber  Int           @map("attempt_number")
+  sentAt         DateTime      @default(now()) @map("sent_at")
+  deliveredAt    DateTime?     @map("delivered_at")
+  readAt         DateTime?     @map("read_at")
+  repliedAt      DateTime?     @map("replied_at")
+  failedAt       DateTime?     @map("failed_at")
+  organization   Organization  @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   outbox         OutboxMessage @relation(fields: [outboxId], references: [id], onDelete: Cascade)
-  cycle          RefillCycle  @relation(fields: [organizationId, cycleId], references: [organizationId, id], onDelete: Cascade)
-  patient        Patient      @relation(fields: [organizationId, patientId], references: [organizationId, id], onDelete: Cascade)
+  cycle          RefillCycle   @relation(fields: [organizationId, cycleId], references: [organizationId, id], onDelete: Cascade)
+  patient        Patient       @relation(fields: [organizationId, patientId], references: [organizationId, id], onDelete: Cascade)
 
   @@index([organizationId, cycleId])
   @@index([organizationId, patientId, sentAt])
@@ -440,15 +459,15 @@ enum StockLevel {
 }
 
 model MedicationStockMark {
-  organizationId String      @map("organization_id")
-  branchId       String      @map("branch_id")
-  medicationId   String      @map("medication_id")
+  organizationId String     @map("organization_id")
+  branchId       String     @map("branch_id")
+  medicationId   String     @map("medication_id")
   level          StockLevel
-  reviewedAt     DateTime    @default(now()) @map("reviewed_at")
-  reviewedBy     String      @map("reviewed_by")
-  branch         Branch      @relation(fields: [organizationId, branchId], references: [organizationId, id], onDelete: Cascade)
-  medication     Medication  @relation(fields: [organizationId, medicationId], references: [organizationId, id], onDelete: Cascade)
-  reviewer       User        @relation("StockMarkReviewer", fields: [reviewedBy], references: [id], onDelete: Restrict)
+  reviewedAt     DateTime   @default(now()) @map("reviewed_at")
+  reviewedBy     String     @map("reviewed_by")
+  branch         Branch     @relation(fields: [organizationId, branchId], references: [organizationId, id], onDelete: Cascade)
+  medication     Medication @relation(fields: [organizationId, medicationId], references: [organizationId, id], onDelete: Cascade)
+  reviewer       User       @relation("StockMarkReviewer", fields: [reviewedBy], references: [id], onDelete: Restrict)
 
   @@id([branchId, medicationId])
   @@unique([organizationId, branchId, medicationId])
@@ -485,6 +504,7 @@ model Incident {
   createdBy      String         @map("created_by")
   resolvedAt     DateTime?      @map("resolved_at")
   boardPosition  Float?         @map("board_position") @db.DoublePrecision
+  autoGenerated  Boolean        @default(false) @map("auto_generated")
   createdAt      DateTime       @default(now()) @map("created_at")
   updatedAt      DateTime       @updatedAt @map("updated_at")
   branch         Branch         @relation(fields: [organizationId, branchId], references: [organizationId, id], onDelete: Cascade)
@@ -572,13 +592,13 @@ model PatientTransfer {
  * branch), which a Json blob would not support with an index.
  */
 model PatientTransferTreatment {
-  id                 String           @id @default(cuid())
-  organizationId     String           @map("organization_id")
-  patientTransferId  String           @map("patient_transfer_id")
-  treatmentId        String           @map("treatment_id")
-  cyclesMovedCount   Int              @map("cycles_moved_count")
-  patientTransfer     PatientTransfer @relation(fields: [patientTransferId], references: [id], onDelete: Cascade)
-  treatment           Treatment       @relation(fields: [treatmentId], references: [id], onDelete: Cascade)
+  id                String          @id @default(cuid())
+  organizationId    String          @map("organization_id")
+  patientTransferId String          @map("patient_transfer_id")
+  treatmentId       String          @map("treatment_id")
+  cyclesMovedCount  Int             @map("cycles_moved_count")
+  patientTransfer   PatientTransfer @relation(fields: [patientTransferId], references: [id], onDelete: Cascade)
+  treatment         Treatment       @relation(fields: [treatmentId], references: [id], onDelete: Cascade)
 
   @@unique([organizationId, id])
   @@index([organizationId, patientTransferId])
@@ -665,18 +685,23 @@ model Task {
 }
 
 model MessageTemplate {
-  id             String         @id @default(cuid())
-  organizationId String         @map("organization_id")
-  branchId       String?        @map("branch_id")
+  id             String           @id @default(cuid())
+  organizationId String           @map("organization_id")
+  branchId       String?          @map("branch_id")
   channel        MessageChannel
-  kind           String         @default("refill_notice")
+  kind           String           @default("refill_notice")
   name           String
-  body           String         @db.Text
-  isActive       Boolean        @default(true) @map("is_active")
-  createdAt      DateTime       @default(now()) @map("created_at")
-  updatedAt      DateTime       @updatedAt @map("updated_at")
-  organization   Organization   @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  branch         Branch?        @relation(fields: [branchId], references: [id], onDelete: Cascade)
+  body           String           @db.Text
+  isActive       Boolean          @default(true) @map("is_active")
+  waTemplateName String?          @map("wa_template_name")
+  waLanguage     String           @default("es") @map("wa_language")
+  waStatus       WaTemplateStatus @default(draft) @map("wa_status")
+  waCategory     String?          @map("wa_category")
+  attemptNumber  Int              @default(1) @map("attempt_number")
+  createdAt      DateTime         @default(now()) @map("created_at")
+  updatedAt      DateTime         @updatedAt @map("updated_at")
+  organization   Organization     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  branch         Branch?          @relation(fields: [branchId], references: [id], onDelete: Cascade)
   outboxMessages OutboxMessage[]
 
   @@unique([organizationId, id])
@@ -707,39 +732,39 @@ model ImportJob {
 }
 
 model User {
-  id                    String             @id
+  id                    String                @id
   name                  String
   email                 String
-  emailVerified         Boolean            @default(false)
+  emailVerified         Boolean               @default(false)
   image                 String?
-  username              String?            @unique
+  username              String?               @unique
   phone                 String?
-  passwordPinEncrypted  String?            @map("password_pin_encrypted")
-  passwordPinAttempts   Int                @default(0) @map("password_pin_attempts")
-  passwordPinLockedAt   DateTime?          @map("password_pin_locked_at")
-  passwordPinUpdatedAt  DateTime?          @map("password_pin_updated_at")
-  createdAt             DateTime           @default(now())
-  updatedAt             DateTime           @updatedAt
+  passwordPinEncrypted  String?               @map("password_pin_encrypted")
+  passwordPinAttempts   Int                   @default(0) @map("password_pin_attempts")
+  passwordPinLockedAt   DateTime?             @map("password_pin_locked_at")
+  passwordPinUpdatedAt  DateTime?             @map("password_pin_updated_at")
+  createdAt             DateTime              @default(now())
+  updatedAt             DateTime              @updatedAt
   sessions              Session[]
   accounts              Account[]
   members               Member[]
   invitations           Invitation[]
   branchMemberships     BranchMember[]
-  responsiblePatients   Patient[]          @relation("PatientResponsible")
-  createdPatients       Patient[]          @relation("PatientCreator")
+  responsiblePatients   Patient[]             @relation("PatientResponsible")
+  createdPatients       Patient[]             @relation("PatientCreator")
   recordedConsents      PatientConsent[]
-  responsibleTreatments Treatment[]        @relation("TreatmentResponsible")
-  recordedDeliveries    Delivery[]         @relation("DeliveryRecordedBy")
+  responsibleTreatments Treatment[]           @relation("TreatmentResponsible")
+  recordedDeliveries    Delivery[]            @relation("DeliveryRecordedBy")
   activities            Activity[]
   savedViews            SavedView[]
-  assignedTasks         Task[]             @relation("TaskAssignee")
-  completedTasks        Task[]             @relation("TaskCompletedBy")
+  assignedTasks         Task[]                @relation("TaskAssignee")
+  completedTasks        Task[]                @relation("TaskCompletedBy")
   importJobs            ImportJob[]
   passwordResetPins     PasswordResetPin[]
   stockMarksReviewed    MedicationStockMark[] @relation("StockMarkReviewer")
-  assignedIncidents     Incident[]        @relation("IncidentAssignee")
-  createdIncidents      Incident[]        @relation("IncidentCreator")
-  createdTransfers      PatientTransfer[] @relation("PatientTransferCreatedBy")
+  assignedIncidents     Incident[]            @relation("IncidentAssignee")
+  createdIncidents      Incident[]            @relation("IncidentCreator")
+  createdTransfers      PatientTransfer[]     @relation("PatientTransferCreatedBy")
 
   @@unique([email])
   @@map("user")
@@ -812,34 +837,43 @@ model Verification {
 }
 
 model Organization {
-  id               String             @id
-  name             String
-  slug             String
-  logo             String?
-  createdAt        DateTime
-  metadata         String?
-  email            String?
-  status           OrganizationStatus @default(active)
-  pin              String?            @unique
-  domain           String?
-  updatedAt        DateTime           @default(now()) @updatedAt @map("updated_at")
-  members          Member[]
-  invitations      Invitation[]
-  branches         Branch[]
-  settings         Setting[]
-  auditLogs        AuditLog[]
-  medications      Medication[]
-  savedViews       SavedView[]
-  treatments       Treatment[]
-  refillCycles     RefillCycle[]
-  deliveries       Delivery[]
-  tasks            Task[]
-  messageTemplates MessageTemplate[]
-  importJobs       ImportJob[]
-  roles            Role[]
-  outboxMessages   OutboxMessage[]
-  notices          Notice[]
-  patientTransfers PatientTransfer[]
+  id                 String              @id
+  name               String
+  slug               String
+  logo               String?
+  createdAt          DateTime
+  metadata           String?
+  email              String?
+  status             OrganizationStatus  @default(active)
+  pin                String?             @unique
+  domain             String?
+  updatedAt          DateTime            @default(now()) @updatedAt @map("updated_at")
+  members            Member[]
+  invitations        Invitation[]
+  branches           Branch[]
+  settings           Setting[]
+  auditLogs          AuditLog[]
+  medications        Medication[]
+  savedViews         SavedView[]
+  treatments         Treatment[]
+  refillCycles       RefillCycle[]
+  deliveries         Delivery[]
+  tasks              Task[]
+  messageTemplates   MessageTemplate[]
+  importJobs         ImportJob[]
+  roles              Role[]
+  outboxMessages     OutboxMessage[]
+  notices            Notice[]
+  patientTransfers   PatientTransfer[]
+  automationRules    AutomationRule[]
+  automationRuns     AutomationRun[]
+  pipelines          Pipeline[]
+  whatsappInbound    WhatsappInbound[]
+  whatsappAccount    WhatsappAccount?
+  telegramAccount    TelegramAccount?
+  telegramLinks      TelegramLink[]
+  telegramLinkTokens TelegramLinkToken[]
+  customProperties   CustomProperty[]
 
   @@unique([slug])
   @@map("organization")
@@ -936,4 +970,211 @@ model RoleMenuItem {
   @@index([organizationId])
   @@index([menuItemId])
   @@map("role_menu_items")
+}
+
+model AutomationRule {
+  id             String       @id @default(cuid())
+  organizationId String       @map("organization_id")
+  key            String
+  enabled        Boolean      @default(false)
+  params         Json         @default("{}")
+  // User the rule runs as: authors the tasks, incidents and history it creates.
+  actorId        String?      @map("actor_id")
+  createdAt      DateTime     @default(now()) @map("created_at")
+  updatedAt      DateTime     @updatedAt @map("updated_at")
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@unique([organizationId, key])
+  @@unique([organizationId, id])
+  @@map("automation_rules")
+}
+
+model AutomationRun {
+  id             String       @id @default(cuid())
+  organizationId String       @map("organization_id")
+  ruleKey        String       @map("rule_key")
+  // Idempotency: one automatic run per rule and subject; manual runs get a unique key.
+  subjectKey     String       @map("subject_key")
+  patientId      String?      @map("patient_id")
+  cycleId        String?      @map("cycle_id")
+  treatmentId    String?      @map("treatment_id")
+  manual         Boolean      @default(false)
+  outcome        String
+  detail         Json         @default("{}")
+  createdAt      DateTime     @default(now()) @map("created_at")
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@unique([organizationId, ruleKey, subjectKey])
+  @@index([organizationId, createdAt])
+  @@map("automation_runs")
+}
+
+// A pipeline is a named, ordered set of stages. Only the refill-cycles pipeline
+// exists today; `key` leaves room for more. Each stage maps to a fixed cycle
+// status group (`systemStatus`), so the cycle workflow and the derived-status
+// calculation do not change when a stage is renamed, recoloured or reordered.
+model Pipeline {
+  id             String          @id @default(cuid())
+  organizationId String          @map("organization_id")
+  key            String
+  name           String
+  description    String?
+  createdAt      DateTime        @default(now()) @map("created_at")
+  updatedAt      DateTime        @updatedAt @map("updated_at")
+  organization   Organization    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  stages         PipelineStage[]
+
+  @@unique([organizationId, key])
+  @@unique([organizationId, id])
+  @@map("pipelines")
+}
+
+model PipelineStage {
+  id             String        @id @default(cuid())
+  organizationId String        @map("organization_id")
+  pipelineId     String        @map("pipeline_id")
+  systemStatus   String        @map("system_status")
+  name           String
+  description    String?
+  color          String
+  position       Int
+  pipeline       Pipeline      @relation(fields: [pipelineId], references: [id], onDelete: Cascade)
+  cycles         RefillCycle[]
+
+  @@unique([organizationId, id])
+  @@index([pipelineId, systemStatus])
+  @@index([organizationId, pipelineId, position])
+  @@map("pipeline_stages")
+}
+
+model CustomProperty {
+  id             String       @id @default(cuid())
+  organizationId String       @map("organization_id")
+  entity         String
+  key            String
+  label          String
+  type           String
+  required       Boolean      @default(false)
+  options        Json         @default("[]")
+  groupName      String       @default("General") @map("group_name")
+  position       Int          @default(0)
+  archivedAt     DateTime?    @map("archived_at")
+  createdAt      DateTime     @default(now()) @map("created_at")
+  updatedAt      DateTime     @updatedAt @map("updated_at")
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@unique([organizationId, entity, key])
+  @@unique([organizationId, id])
+  @@map("custom_properties")
+}
+
+enum WaTemplateStatus {
+  draft
+  pending
+  approved
+  rejected
+
+  @@map("wa_template_status")
+}
+
+// Incoming WhatsApp messages and button replies. Free text is stored, never interpreted.
+model WhatsappInbound {
+  id                String       @id @default(cuid())
+  organizationId    String       @map("organization_id")
+  providerMessageId String       @map("provider_message_id")
+  channel           String       @default("whatsapp")
+  fromPhone         String?      @map("from_phone")
+  fromChatId        String?      @map("from_chat_id")
+  patientId         String?      @map("patient_id")
+  cycleId           String?      @map("cycle_id")
+  text              String?      @db.Text
+  buttonPayload     String?      @map("button_payload")
+  receivedAt        DateTime     @map("received_at")
+  processedAt       DateTime?    @map("processed_at")
+  createdAt         DateTime     @default(now()) @map("created_at")
+  organization      Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  patient           Patient?     @relation(fields: [organizationId, patientId], references: [organizationId, id], onDelete: Cascade)
+  cycle             RefillCycle? @relation(fields: [organizationId, cycleId], references: [organizationId, id], onDelete: Cascade)
+
+  @@unique([providerMessageId])
+  @@unique([organizationId, id])
+  @@index([organizationId, patientId, receivedAt])
+  @@index([organizationId, processedAt])
+  @@map("whatsapp_inbound")
+}
+
+// One WhatsApp Business number per organization. The access token is stored encrypted (AES-256-GCM).
+model WhatsappAccount {
+  id             String       @id @default(cuid())
+  organizationId String       @unique @map("organization_id")
+  phoneNumberId  String       @unique @map("phone_number_id")
+  accessTokenEnc String       @map("access_token_enc")
+  createdAt      DateTime     @default(now()) @map("created_at")
+  updatedAt      DateTime     @updatedAt @map("updated_at")
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@map("whatsapp_accounts")
+}
+
+// One Telegram bot per organization (created with @BotFather). The token and the webhook secret are stored encrypted.
+model TelegramAccount {
+  id               String       @id @default(cuid())
+  organizationId   String       @unique @map("organization_id")
+  // One organization per bot: Telegram allows a single webhook per bot, so two organizations cannot share one.
+  botUsername      String       @unique @map("bot_username")
+  botTokenEnc      String       @map("bot_token_enc")
+  // Unguessable path segment of this bot's webhook URL.
+  webhookKey       String       @unique @map("webhook_key")
+  webhookSecretEnc String       @map("webhook_secret_enc")
+  createdAt        DateTime     @default(now()) @map("created_at")
+  updatedAt        DateTime     @updatedAt @map("updated_at")
+  organization     Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@map("telegram_accounts")
+}
+
+// A patient's Telegram chat with the organization's bot. Created only by the patient opening the link staff gave them.
+model TelegramLink {
+  id             String       @id @default(cuid())
+  organizationId String       @map("organization_id")
+  patientId      String       @map("patient_id")
+  chatId         String       @map("chat_id")
+  linkedAt       DateTime     @default(now()) @map("linked_at")
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  patient        Patient      @relation(fields: [organizationId, patientId], references: [organizationId, id], onDelete: Cascade)
+
+  @@unique([organizationId, patientId])
+  @@index([organizationId, chatId])
+  @@map("telegram_links")
+}
+
+// Single-use, expiring link tokens. Only a hash is stored, so a database leak does not expose usable links.
+model TelegramLinkToken {
+  id             String       @id @default(cuid())
+  organizationId String       @map("organization_id")
+  patientId      String       @map("patient_id")
+  tokenHash      String       @unique @map("token_hash")
+  expiresAt      DateTime     @map("expires_at")
+  usedAt         DateTime?    @map("used_at")
+  createdBy      String       @map("created_by")
+  createdAt      DateTime     @default(now()) @map("created_at")
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  patient        Patient      @relation(fields: [organizationId, patientId], references: [organizationId, id], onDelete: Cascade)
+
+  @@index([organizationId, patientId])
+  @@map("telegram_link_tokens")
+}
+
+// Last run and failure counters of each worker job (platform-wide, no personal data).
+model JobRun {
+  jobName        String    @id @map("job_name")
+  runs           Int       @default(0)
+  failures       Int       @default(0)
+  lastStartedAt  DateTime? @map("last_started_at")
+  lastFinishedAt DateTime? @map("last_finished_at")
+  lastStatus     String?   @map("last_status")
+  lastError      String?   @map("last_error")
+  lastFailureAt  DateTime? @map("last_failure_at")
+
+  @@map("job_runs")
 }

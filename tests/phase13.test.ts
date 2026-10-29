@@ -412,9 +412,15 @@ describe.skipIf(!enabled)('phase 1.3 daily operations', () => {
     }));
     await withTenant(context.organization.id, (tx) => tx.treatment.createMany({ data: rows }));
 
+    // ANALYZE needs table ownership: the runtime role skips it silently, so use the owner connection.
+    const admin = new PrismaClient({ datasources: { db: { url: process.env.DIRECT_URL ?? process.env.DATABASE_URL! } } });
+    try {
+      await admin.$executeRawUnsafe('ANALYZE treatments');
+    } finally {
+      await admin.$disconnect();
+    }
+
     const planRows = await withTenant(context.organization.id, async (tx) => {
-      // Refresh planner statistics after the bulk insert so the EXPLAIN is stable.
-      await tx.$executeRawUnsafe('ANALYZE treatments');
       return tx.$queryRaw<Array<Record<string, string>>>`
         EXPLAIN SELECT id FROM treatments
         WHERE organization_id = ${context.organization.id}
@@ -427,7 +433,8 @@ describe.skipIf(!enabled)('phase 1.3 daily operations', () => {
     });
     const plan = planRows.map((row) => Object.values(row).join(' ')).join('\n');
     console.info(plan);
-    expect(plan).toContain('treatments_organization_id_branch_id_coverage_end_on_idx');
+    // The planner may pick the branch-scoped or the org-wide coverage index; both avoid a seq scan.
+    expect(plan).toMatch(/treatments_organization_id(_branch_id)?_coverage_end_on_idx/);
 
     const started = performance.now();
     const dashboard = await owner.get(`/api/v1/dashboard?branch_id=${branch.id}`).expect(200);

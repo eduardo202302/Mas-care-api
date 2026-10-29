@@ -276,14 +276,13 @@ Frontend                           Backend
 
 ## Pendientes de integración (producción)
 
+La recuperación **no envía correo ni SMS**: el PIN de 6 dígitos lo ve el propietario o el administrador en Ajustes → Usuarios y se lo entrega al usuario. Cada PIN sirve una vez (se rota al usarse), se bloquea 15 minutos tras 5 intentos fallidos por usuario y `forgot-password` no revela si el identificador existe. Por eso no hace falta ningún proveedor de envío, y la respuesta de `forgot-password` nunca incluye el PIN.
+
 | # | Qué | Dónde | Prioridad |
 |---|---|---|---|
-| 1 | Implementar proveedor real de envío (email SMTP o SMS Twilio/Meta) | `src/infra/pin-delivery.ts` | **Bloqueante para producción** |
-| 2 | Eliminar `_devPin` de la respuesta de `forgot-password` una vez integrado el proveedor | `src/modules/auth/forgot-password.ts` | **Bloqueante para producción** |
-| 3 | Añadir variables de entorno del proveedor (ej. `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASS`, `SMTP_FROM`) | `src/config/env.ts` | Al integrar proveedor |
-| 4 | Normalización de teléfonos internacionales: la función actual (`src/domain/notice.ts`) solo cubre Colombia (+57). Extender si la app opera en otros países. | `src/domain/notice.ts` | Medio |
-| 5 | Limitar intentos de `forgot-password` por usuario (no solo por IP) para resistir ataques coordinados multi-IP | `src/modules/auth/forgot-password.ts` | Medio |
-| 6 | Verificación de email al registrar (actualmente `emailVerified` queda en `false`). La tabla `verification` de better-auth ya está disponible. | `src/infra/auth.ts` | Bajo |
+| 1 | Verificación de email: hecha (`emailVerified` pasa a `true` al abrir el enlace; sin `SMTP_HOST` no se envía). No bloquea el inicio de sesión. | `src/infra/auth.ts`, `src/infra/mailer.ts` | Hecho |
+| 2 | Normalización de teléfonos: `src/domain/notice.ts` conoce República Dominicana y Colombia. Añadir cualquier otro país a `countryDialingPlans`. | `src/domain/notice.ts` | Según el país |
+| 3 | Opcional: entregar el PIN por correo en vez de a mano. El SMTP ya existe (`src/infra/mailer.ts`); faltaría decidir el flujo. | `src/modules/auth/` | Opcional |
 
 ---
 
@@ -297,5 +296,3 @@ Frontend                           Backend
 | `BETTER_AUTH_URL` | ✅ | URL pública del backend (ej. `https://api.miapp.com`) |
 | `NODE_ENV` | ✅ | `development` \| `test` \| `production` |
 | `WEB_ORIGIN` | ✅ | Origen(es) del frontend permitidos por CORS |
-| *(futuro)* `SMTP_HOST` | En producción | Host del servidor SMTP para envío de PINs por email |
-| *(futuro)* `SMS_API_KEY` | En producción | Clave del proveedor SMS para envío de PINs por teléfono |

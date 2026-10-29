@@ -6,6 +6,8 @@ import { prisma, withTenant } from '../../infra/prisma.js';
 import { record } from '../audit/record.js';
 import { validateBody } from '../../infra/validate.js';
 import { createPin } from '../../infra/pin-crypto.js';
+import { allowedOrigins } from '../../config/env.js';
+import { logger } from '../../infra/logger.js';
 import { companyIdFromLinkToken } from '../../infra/company-link.js';
 
 export const registerRouter = Router();
@@ -148,6 +150,10 @@ registerRouter.post('/', validateBody(registration), async (req, res, next) => {
     await withTenant(organization.id, (tx) =>
       record(tx, { organizationId: organization.id, actorId: signup.user.id, action: 'auth.register' }),
     );
+
+    // Best effort: a mail failure must not undo a finished registration; the user can resend from Mi perfil.
+    await auth.api.sendVerificationEmail({ body: { email: signup.user.email, callbackURL: allowedOrigins[0] } })
+      .catch((error: unknown) => logger.warn({ err: error }, 'verification mail failed'));
 
     res.setHeader('Set-Cookie', cookieHeader);
     res.status(201).json({

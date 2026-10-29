@@ -4,6 +4,7 @@ import { z } from 'zod';
 import { addDays, daysBetween, deriveCoverage, toDateOnly } from '../../domain/coverage.js';
 import {
   computeDashboardCounts,
+  noResponseWhere,
   sumDashboardCountRows,
   sumDashboardCounts,
   type DashboardCounts,
@@ -155,7 +156,7 @@ dashboardRouter.get('/', validateQuery(dashboardQuery), async (req, res) => {
         ? await computeDashboardCounts(tx, tenant.organizationId, null, today, settings)
         : await sumDashboardCounts(tx, tenant.organizationId, scopeBranchIds, today, settings);
 
-    const [coverageRows, prescriptionRows, pendingRows] = await Promise.all([
+    const [coverageRows, prescriptionRows, pendingRows, noResponseRows] = await Promise.all([
       tx.treatment.findMany({
         where: { AND: [base, { coverageEndOn: { not: null, lte: dueLimit } }] },
         include,
@@ -176,11 +177,18 @@ dashboardRouter.get('/', validateQuery(dashboardQuery), async (req, res) => {
         orderBy: [{ coverageEndOn: 'asc' }, { id: 'asc' }],
         take: 15,
       }),
+      tx.treatment.findMany({
+        where: { AND: [base, noResponseWhere(settings.maxNoticeAttempts)] },
+        include,
+        orderBy: [{ coverageEndOn: 'asc' }, { id: 'asc' }],
+        take: 15,
+      }),
     ]);
 
     const coveragePresented = await presentRows(tx, coverageRows, settings, today);
     const prescriptionPresented = await presentRows(tx, prescriptionRows, settings, today);
     const pendingPresented = await presentRows(tx, pendingRows, settings, today);
+    const noResponsePresented = await presentRows(tx, noResponseRows, settings, today);
 
     return {
       branch_id: branch_id ?? null,
@@ -192,7 +200,7 @@ dashboardRouter.get('/', validateQuery(dashboardQuery), async (req, res) => {
         overdue: coveragePresented.filter((row) => (row.days_remaining ?? 0) < 0),
         pending_pickups: pendingPresented,
         prescriptions_to_renew: prescriptionPresented.filter((row) => row.prescription_flag),
-        no_response: [],
+        no_response: noResponsePresented,
       },
     };
   });
@@ -327,7 +335,8 @@ dashboardRouter.get('/list', validateQuery(dashboardListQuery), async (req, res)
         orderBy = [{ prescriptionExpiresOn: 'asc' }, { id: 'asc' }];
         break;
       case 'no_response':
-        return { card, branch_id: query.branch_id ?? null, data: [], total: 0, page: 1, rows: resolvePaging(query).rows };
+        where = { AND: [base, noResponseWhere(settings.maxNoticeAttempts)] };
+        break;
     }
     const { page, rows: size, skip } = resolvePaging(query);
     const [rows, total] = await Promise.all([

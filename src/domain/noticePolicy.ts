@@ -1,8 +1,4 @@
 /**
- * PAUSED (Fase 3, messaging): work on the automatic WhatsApp/call notice
- * pipeline is on hold by request — resume later rather than extend it now.
- * Nothing in the app imports this module yet, so it has no runtime effect.
- *
  * Pure decision engine for automatic WhatsApp/call notices.
  *
  * `decideNextAction` takes a snapshot of one open cycle plus its treatment,
@@ -13,6 +9,9 @@
  * across timezones without touching a clock.
  */
 
+/** Channels the engine can send through. A call is never sent: it becomes a task for staff. */
+export type NoticeChannel = 'whatsapp' | 'telegram';
+
 export type NoticeActionType =
   | 'send'
   | 'wait'
@@ -21,7 +20,7 @@ export type NoticeActionType =
   | 'skip';
 
 export type NoticeAction =
-  | { type: 'send'; attempt: number }
+  | { type: 'send'; attempt: number; channel: NoticeChannel }
   | { type: 'wait'; until: Date }
   | { type: 'create_call_task'; reason: string }
   | { type: 'create_incident' }
@@ -44,6 +43,10 @@ export type NoticePatientSnapshot = {
   phone: string | null;
   phoneHasWhatsapp: boolean;
   reminderConsent: boolean;
+  /** The patient own preference, when known. Telegram is used only if the patient linked a chat. */
+  preferredChannel?: 'whatsapp' | 'call' | 'sms' | 'telegram';
+  /** The patient opened the bot link, so the organization bot can write to that chat. */
+  telegramLinked?: boolean;
 };
 
 export type NoticeSettingsSnapshot = {
@@ -139,7 +142,15 @@ export function decideNextAction(
 
   // Rule 5 (continued): no WhatsApp number means the engine cannot send
   // anything itself, but staff should still be nudged to call.
-  if (!patient.phone || !patient.phoneHasWhatsapp) {
+  // Pick the channel: the preferred one when it works, otherwise the other one, otherwise staff call.
+  const whatsappReady = Boolean(patient.phone) && patient.phoneHasWhatsapp;
+  const telegramReady = patient.telegramLinked === true;
+  const channel: NoticeChannel | null =
+    patient.preferredChannel === 'telegram' && telegramReady ? 'telegram'
+      : whatsappReady ? 'whatsapp'
+        : telegramReady ? 'telegram'
+          : null;
+  if (!channel) {
     return { type: 'create_call_task', reason: 'no_whatsapp' };
   }
 
@@ -154,7 +165,14 @@ export function decideNextAction(
 
   // Rule 6: attempts exhausted on a cycle still waiting for a response —
   // escalate once, never leave it silent.
+  // The last attempt still gets retryAfterHours to be answered before escalating.
   if (cycle.status === 'notified' && cycle.noticeAttempts >= settings.maxNoticeAttempts) {
+    if (history.lastNoticeAt) {
+      const hoursSinceLast = (now.getTime() - history.lastNoticeAt.getTime()) / 3_600_000;
+      if (hoursSinceLast < settings.retryAfterHours) {
+        return { type: 'wait', until: new Date(history.lastNoticeAt.getTime() + settings.retryAfterHours * 3_600_000) };
+      }
+    }
     return { type: 'create_incident' };
   }
 
@@ -194,5 +212,5 @@ export function decideNextAction(
     return { type: 'wait', until: nextWindowOpening(now, settings) };
   }
 
-  return { type: 'send', attempt: nextAttempt };
+  return { type: 'send', attempt: nextAttempt, channel };
 }

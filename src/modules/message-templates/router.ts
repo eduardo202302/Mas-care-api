@@ -10,11 +10,15 @@ import { withTenant } from '../../infra/prisma.js';
 import { resolveTenant } from '../../infra/tenant.js';
 import { validateBody, validateParams, validateQuery } from '../../infra/validate.js';
 import { record } from '../audit/record.js';
+import { MessagingError } from '../../domain/messaging/provider.js';
+import { normalizePhone } from '../../domain/notice.js';
+import { getProvider } from '../../infra/messaging/index.js';
 import {
   templateCreate,
   templateListQuery,
   templateParams,
   templatePatch,
+  templateTestSend,
 } from '../../schemas/message-template.js';
 
 export const templatesRouter = Router();
@@ -69,6 +73,11 @@ templatesRouter.post('/', validateBody(templateCreate), async (req, res) => {
         name: input.name,
         body: input.body,
         isActive: input.is_active ?? true,
+        ...(input.wa_template_name !== undefined ? { waTemplateName: input.wa_template_name } : {}),
+        ...(input.wa_language ? { waLanguage: input.wa_language } : {}),
+        ...(input.wa_status ? { waStatus: input.wa_status } : {}),
+        ...(input.wa_category !== undefined ? { waCategory: input.wa_category } : {}),
+        ...(input.attempt_number ? { attemptNumber: input.attempt_number } : {}),
       } as Prisma.MessageTemplateUncheckedCreateInput,
     });
     await record(tx, { organizationId: tenant.organizationId, actorId: tenant.userId, action: 'template.create', subjectId: created.id });
@@ -100,6 +109,11 @@ templatesRouter.patch('/:id', validateParams(templateParams), validateBody(templ
     if (input.branch_id && !await canAccessBranch(tx, tenant, input.branch_id)) {
       throw new ApiError(404, 'NOT_FOUND', 'Branch not found');
     }
+    const finalStatus = input.wa_status ?? current.waStatus;
+    const finalName = input.wa_template_name === undefined ? current.waTemplateName : input.wa_template_name;
+    if (finalStatus === 'approved' && !finalName) {
+      throw new ApiError(400, 'VALIDATION_ERROR', 'Una plantilla aprobada necesita el nombre registrado en Meta', { wa_template_name: 'Obligatorio para una plantilla aprobada' });
+    }
     const updated = await tx.messageTemplate.update({
       where: { organizationId_id: { organizationId: tenant.organizationId, id } },
       data: nonEmpty({
@@ -109,6 +123,11 @@ templatesRouter.patch('/:id', validateParams(templateParams), validateBody(templ
         name: input.name,
         body: input.body,
         isActive: input.is_active,
+        waTemplateName: input.wa_template_name,
+        waLanguage: input.wa_language,
+        waStatus: input.wa_status,
+        waCategory: input.wa_category,
+        attemptNumber: input.attempt_number,
       }) as Prisma.MessageTemplateUncheckedUpdateInput,
     });
     await record(tx, { organizationId: tenant.organizationId, actorId: tenant.userId, action: 'template.update', subjectId: id });
@@ -131,4 +150,38 @@ templatesRouter.delete('/:id', validateParams(templateParams), async (req, res) 
     await record(tx, { organizationId: tenant.organizationId, actorId: tenant.userId, action: 'template.delete', subjectId: id });
   });
   res.status(204).end();
+});
+
+/**
+ * Sends the template to one number the owner or admin types, to check it
+ * before it is used for patients. Only approved templates; the phone number is
+ * not written to the audit log.
+ */
+templatesRouter.post('/:id/test-send', validateParams(templateParams), validateBody(templateTestSend), async (req, res) => {
+  const tenant = req.tenant!;
+  requirePermission(tenant.role, 'automation:manage');
+  const { id } = res.locals.validatedParams as z.infer<typeof templateParams>;
+  const input = req.body as z.infer<typeof templateTestSend>;
+  const prepared = await withTenant(tenant.organizationId, async (tx) => {
+    const template = await findTemplate(tx, tenant, id);
+    if (!template) throw new ApiError(404, 'NOT_FOUND', 'Message template not found');
+    if (template.channel === 'telegram') throw new ApiError(409, 'TEST_SEND_UNSUPPORTED', 'La prueba de envío solo existe para plantillas de WhatsApp: en Telegram el paciente debe vincular su chat primero');
+    if (template.waStatus !== 'approved' || !template.waTemplateName) throw new ApiError(409, 'TEMPLATE_NOT_APPROVED', 'Solo se pueden probar plantillas aprobadas por Meta');
+    const settings = await tx.setting.findFirst({ where: { branchId: null }, select: { defaultCountryCode: true } });
+    const phone = normalizePhone(input.phone, settings?.defaultCountryCode ?? 'DO');
+    if (!phone) throw new ApiError(400, 'VALIDATION_ERROR', 'Teléfono inválido', { phone: 'Teléfono inválido' });
+    const organization = await tx.organization.findUniqueOrThrow({ where: { id: tenant.organizationId }, select: { name: true } });
+    const variables: Record<string, string> = { paciente: 'Prueba', farmacia: organization.name };
+    if (template.body.includes('{{medicamento}}')) variables.medicamento = 'Medicamento de prueba';
+    variables.fecha = new Date().toISOString().slice(0, 10);
+    await record(tx, { organizationId: tenant.organizationId, actorId: tenant.userId, action: 'template.test_send', subjectId: id });
+    return { organizationId: tenant.organizationId, toPhoneE164: phone, templateName: template.waTemplateName, languageCode: template.waLanguage, variables };
+  });
+  try {
+    const result = await getProvider().sendTemplate(prepared);
+    res.json({ sent: true, provider_message_id: result.providerMessageId });
+  } catch (error) {
+    if (error instanceof MessagingError) throw new ApiError(502, 'PROVIDER_ERROR', 'El proveedor rechazó el envío de prueba', { code: error.code ?? 'provider_error' });
+    throw error;
+  }
 });

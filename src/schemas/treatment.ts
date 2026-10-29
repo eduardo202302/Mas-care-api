@@ -17,6 +17,7 @@ const treatmentFields = {
   prescriber_name: optionalText(160),
   prescription_expires_on: isoDate.nullable().optional(),
   notes: z.string().trim().max(5000).nullable().optional(),
+  custom_values: z.record(z.string(), z.unknown()).optional(),
 };
 
 export const treatmentCreate = z.object(treatmentFields).strict();

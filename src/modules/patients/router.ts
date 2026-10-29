@@ -9,7 +9,10 @@ import { paginate, resolvePaging } from '../../infra/pagination.js';
 import { withTenant } from '../../infra/prisma.js';
 import { resolveTenant } from '../../infra/tenant.js';
 import { validateBody, validateParams, validateQuery } from '../../infra/validate.js';
+import { randomBytes } from 'node:crypto';
 import { record } from '../audit/record.js';
+import { hashLinkToken } from '../webhooks/telegram.js';
+import { customFilter, resolveCustomValues } from '../custom-properties/service.js';
 import {
   activityInput, activityListQuery, caregiverInput, caregiverParams, caregiverPatch,
   consentInput, duplicateCheck, patientCreate, patientListQuery, patientParams, patientPatch,
@@ -35,6 +38,30 @@ const assertResponsibleMember = async (tx: Prisma.TransactionClient, organizatio
   if (!member) throw new ApiError(400, 'INVALID_RESPONSIBLE_USER', 'Responsible user must belong to this organization');
 };
 
+const range = (from?: string, to?: string) => ({
+  ...(from ? { gte: new Date(`${from}T00:00:00.000Z`) } : {}),
+  ...(to ? { lte: new Date(`${to}T23:59:59.999Z`) } : {}),
+});
+/** Date filters on the patient list: creation, activity, next refill date and coverage end. */
+function dateFilters(query: z.infer<typeof patientListQuery>): Prisma.PatientWhereInput {
+  const has = (from?: string, to?: string) => Boolean(from || to);
+  const and: Prisma.PatientWhereInput[] = [];
+  if (has(query.created_from, query.created_to)) and.push({ createdAt: range(query.created_from, query.created_to) });
+  if (has(query.activity_from, query.activity_to)) and.push({ activities: { some: { occurredAt: range(query.activity_from, query.activity_to) } } });
+  if (has(query.expected_from, query.expected_to)) and.push({ treatments: { some: { cycles: { some: { closedAt: null, expectedOn: range(query.expected_from, query.expected_to) } } } } });
+  if (has(query.coverage_from, query.coverage_to)) and.push({ treatments: { some: { coverageEndOn: range(query.coverage_from, query.coverage_to) } } });
+  return and.length ? { AND: and } : {};
+}
+
+const patientSortMap: Record<string, string> = { created_at: 'createdAt', full_name: 'fullName', document_id: 'documentId', birth_date: 'birthDate' };
+function patientOrder(sort?: string[]): Prisma.PatientOrderByWithRelationInput[] {
+  if (!sort?.length) return [{ createdAt: 'desc' }, { id: 'desc' }];
+  return [...sort.map((part) => {
+    const [field, dir] = part.split(':') as [string, 'asc' | 'desc'];
+    return { [patientSortMap[field]!]: dir } as Prisma.PatientOrderByWithRelationInput;
+  }), { id: 'desc' }];
+}
+
 patientsRouter.get('/', validateQuery(patientListQuery), async (req, res) => {
   const tenant = req.tenant!;
   requirePermission(tenant.role, 'patients:read');
@@ -44,16 +71,18 @@ patientsRouter.get('/', validateQuery(patientListQuery), async (req, res) => {
       archivedAt: query.archived ? { not: null } : null,
       ...(query.branchId ? { primaryBranchId: query.branchId } : {}),
       ...(query.responsibleUserId ? { responsibleUserId: query.responsibleUserId } : {}),
+      ...dateFilters(query),
       ...(query.q ? { OR: [
         { fullName: { contains: query.q, mode: 'insensitive' } },
         { documentId: { contains: query.q, mode: 'insensitive' } },
         { phone: { contains: query.q } },
       ] } : {}),
     };
-    const where = await patientWhere(tx, tenant, filters);
+    const custom = await customFilter(tx, 'patient', query.cp_key, query.cp_value);
+    const where = await patientWhere(tx, tenant, custom ? { AND: [filters, { customValues: custom }] } : filters);
     const page = await paginate(query, (args) => tx.patient.findMany({
       where,
-      orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+      orderBy: patientOrder(query.sort),
       take: args.take,
       skip: args.skip,
       ...(args.cursor ? { cursor: { organizationId_id: { organizationId: tenant.organizationId, id: args.cursor } } } : {}),
@@ -94,10 +123,12 @@ patientsRouter.post('/', validateBody(patientCreate), async (req, res) => {
       select: { id: true, fullName: true, documentId: true, phone: true, primaryBranchId: true },
       take: 10,
     });
-    const { birthDate, ...rest } = input;
+    const { birthDate, customValues, ...rest } = input;
+    const resolvedValues = await resolveCustomValues(tx, 'patient', customValues, {}, 'create');
     const patient = await tx.patient.create({
       data: {
         ...nonEmpty(rest),
+        ...(resolvedValues ? { customValues: resolvedValues } : {}),
         ...(birthDate !== undefined ? { birthDate: birthDate ? new Date(birthDate + 'T00:00:00.000Z') : null } : {}),
         organizationId: tenant.organizationId,
         createdBy: tenant.userId,
@@ -137,11 +168,13 @@ patientsRouter.patch('/:id', validateParams(patientParams), validateBody(patient
       throw new ApiError(404, 'NOT_FOUND', 'Branch not found');
     }
     await assertResponsibleMember(tx, tenant.organizationId, input.responsibleUserId);
-    const { birthDate, ...rest } = input;
+    const { birthDate, customValues, ...rest } = input;
+    const resolvedValues = await resolveCustomValues(tx, 'patient', customValues, existing.customValues, 'patch');
     const updated = await tx.patient.update({
       where: { organizationId_id: { organizationId: tenant.organizationId, id } },
       data: {
         ...nonEmpty(rest),
+        ...(resolvedValues ? { customValues: resolvedValues } : {}),
         ...(birthDate !== undefined ? { birthDate: birthDate ? new Date(birthDate + 'T00:00:00.000Z') : null } : {}),
       } as Prisma.PatientUncheckedUpdateInput,
     });
@@ -308,7 +341,8 @@ patientsRouter.get('/:id/activities', validateParams(patientParams), validateQue
   const result = await withTenant(tenant.organizationId, async (tx) => {
     if (!await findAccessiblePatient(tx, tenant, id)) throw new ApiError(404, 'NOT_FOUND', 'Patient not found');
     const rows = await tx.activity.findMany({
-      where: { patientId: id },
+      where: { patientId: id, ...(query.treatment_id ? { treatmentId: query.treatment_id } : {}) },
+      include: { author: { select: { id: true, name: true } } },
       orderBy: [{ occurredAt: 'desc' }, { id: 'desc' }],
       take: query.limit + 1,
       ...(query.cursor ? { cursor: { organizationId_id: { organizationId: tenant.organizationId, id: query.cursor } }, skip: 1 } : {}),
@@ -328,8 +362,16 @@ patientsRouter.post('/:id/activities', validateParams(patientParams), validateBo
   const input = req.body as z.infer<typeof activityInput>;
   const activity = await withTenant(tenant.organizationId, async (tx) => {
     if (!await findAccessiblePatient(tx, tenant, id, { archivedAt: null })) throw new ApiError(404, 'NOT_FOUND', 'Patient not found');
+    if (input.treatmentId && !await tx.treatment.findFirst({ where: { id: input.treatmentId, patientId: id }, select: { id: true } })) {
+      throw new ApiError(400, 'INVALID_TREATMENT', 'The treatment does not belong to this patient');
+    }
     const created = await tx.activity.create({
-      data: { organizationId: tenant.organizationId, patientId: id, authorId: tenant.userId, type: input.type, body: input.body, metadata: input.metadata as Prisma.InputJsonObject },
+      data: {
+        organizationId: tenant.organizationId, patientId: id, authorId: tenant.userId, type: input.type, body: input.body, metadata: input.metadata as Prisma.InputJsonObject,
+        ...(input.occurredOn ? { occurredAt: new Date(`${input.occurredOn}T12:00:00.000Z`) } : {}),
+        ...(input.treatmentId ? { treatmentId: input.treatmentId } : {}),
+      },
+      include: { author: { select: { id: true, name: true } } },
     });
     await record(tx, { organizationId: tenant.organizationId, actorId: tenant.userId, action: 'patient.activity.create', subjectId: id });
     return created;
@@ -400,6 +442,25 @@ patientsRouter.post('/:id/transfers', validateParams(patientParams), validateBod
     if (!patient) throw new ApiError(404, 'NOT_FOUND', 'Patient not found');
     const fromBranchId = patient.primaryBranchId;
 
+    // Idempotency: runs BEFORE the branch/treatment checks below because a replay
+    // sees the post-transfer state (patient already in the destination branch,
+    // treatments already moved), which those checks would reject. Compares the
+    // request to the stored transfer; 409 if the key was used for a different one.
+    if (key) {
+      const existing = await tx.patientTransfer.findFirst({ where: { idempotencyKey: key } });
+      if (existing) {
+        const existingLines = await tx.patientTransferTreatment.findMany({ where: { patientTransferId: existing.id }, select: { treatmentId: true } });
+        const sameOperation = existing.patientId === id
+          && existing.toBranchId === input.to_branch_id
+          && existing.reason === input.reason
+          && (!input.treatment_ids || JSON.stringify(existingLines.map((l) => l.treatmentId).sort()) === JSON.stringify([...input.treatment_ids].sort()));
+        if (!sameOperation) {
+          throw new ApiError(409, 'IDEMPOTENCY_CONFLICT', 'Idempotency-Key was already used for a different transfer');
+        }
+        return { transfer: existing, idempotentReplay: true, warnings: [] as ReturnType<typeof presentTransfer>['warnings'] };
+      }
+    }
+
     const toBranch = await tx.branch.findFirst({ where: { id: input.to_branch_id, organizationId: tenant.organizationId } });
     if (!toBranch) throw new ApiError(404, 'NOT_FOUND', 'Destination branch not found');
     if (toBranch.archivedAt) throw new ApiError(409, 'BRANCH_ARCHIVED', 'Destination branch is archived');
@@ -445,26 +506,6 @@ patientsRouter.post('/:id/transfers', validateParams(patientParams), validateBod
       cyclesByTreatment.set(cycle.treatmentId, (cyclesByTreatment.get(cycle.treatmentId) ?? 0) + 1);
     }
     const cyclesCount = openCycles.length;
-
-    // Idempotency: replay if the SAME key maps to the exact same logical operation
-    // (same patient, same from/to branches, same resulting treatment set); 409 if
-    // the key was already used for a different combination.
-    if (key) {
-      const existing = await tx.patientTransfer.findFirst({ where: { idempotencyKey: key } });
-      if (existing) {
-        const existingLines = await tx.patientTransferTreatment.findMany({ where: { patientTransferId: existing.id }, select: { treatmentId: true } });
-        const existingTreatmentIds = existingLines.map((l) => l.treatmentId).sort();
-        const sameOperation = existing.patientId === id
-          && existing.fromBranchId === fromBranchId
-          && existing.toBranchId === toBranch.id
-          && existing.reason === input.reason
-          && JSON.stringify(existingTreatmentIds) === JSON.stringify([...treatmentIds].sort());
-        if (!sameOperation) {
-          throw new ApiError(409, 'IDEMPOTENCY_CONFLICT', 'Idempotency-Key was already used for a different transfer');
-        }
-        return { transfer: existing, idempotentReplay: true, warnings: [] as ReturnType<typeof presentTransfer>['warnings'] };
-      }
-    }
 
     // Stock-out warning on destination (rule #4 above). Skipped entirely when the
     // caller already confirmed it for this exact idempotent retry.
@@ -584,4 +625,160 @@ patientsRouter.get('/:id/transfers', validateParams(patientParams), validateQuer
     };
   });
   res.json(result);
+});
+
+/**
+ * Duplicates the patient record only. Treatments, caregivers, consent, document
+ * and phone are not copied: copying treatments would create duplicated refill
+ * cycles, and a copied document or phone would trip duplicate detection.
+ */
+patientsRouter.post('/:id/duplicate', validateParams(patientParams), async (req, res) => {
+  const tenant = req.tenant!;
+  requirePermission(tenant.role, 'patients:write');
+  const { id } = res.locals.validatedParams as z.infer<typeof patientParams>;
+  const copy = await withTenant(tenant.organizationId, async (tx) => {
+    const source = await findAccessiblePatient(tx, tenant, id);
+    if (!source) throw new ApiError(404, 'NOT_FOUND', 'Patient not found');
+    const created = await tx.patient.create({
+      data: {
+        organizationId: tenant.organizationId,
+        createdBy: tenant.userId,
+        primaryBranchId: source.primaryBranchId,
+        fullName: `${source.fullName} (copia)`.slice(0, 160),
+        birthDate: source.birthDate,
+        address: source.address,
+        zone: source.zone,
+        preferredChannel: source.preferredChannel,
+        careNotes: source.careNotes,
+        responsibleUserId: source.responsibleUserId,
+      } as Prisma.PatientUncheckedCreateInput,
+    });
+    await tx.activity.create({
+      data: { organizationId: tenant.organizationId, patientId: created.id, type: 'patient_created', body: `Duplicado de ${source.fullName}`, authorId: tenant.userId },
+    });
+    await record(tx, { organizationId: tenant.organizationId, actorId: tenant.userId, action: 'patient.duplicate', subjectId: created.id, metadata: { sourceId: id } });
+    return created;
+  });
+  res.status(201).json(copy);
+});
+
+const pauseInput = z.object({ paused: z.boolean(), reason: z.string().trim().max(500).nullable().optional() }).strict();
+
+/** Pauses or resumes automatic notices for one patient. Pausing also cancels what was already waiting to go out. */
+patientsRouter.patch('/:id/automation', validateParams(patientParams), validateBody(pauseInput), async (req, res) => {
+  const tenant = req.tenant!;
+  requirePermission(tenant.role, 'patients:write');
+  const { id } = res.locals.validatedParams as z.infer<typeof patientParams>;
+  const input = req.body as z.infer<typeof pauseInput>;
+  const result = await withTenant(tenant.organizationId, async (tx) => {
+    if (!await findAccessiblePatient(tx, tenant, id)) throw new ApiError(404, 'NOT_FOUND', 'Patient not found');
+    const updated = await tx.patient.update({
+      where: { organizationId_id: { organizationId: tenant.organizationId, id } },
+      data: { automationPaused: input.paused, automationPausedReason: input.paused ? (input.reason ?? null) : null },
+      select: { id: true, automationPaused: true, automationPausedReason: true },
+    });
+    const cancelled = input.paused
+      ? (await tx.outboxMessage.updateMany({ where: { patientId: id, status: 'pending' }, data: { status: 'cancelled', cancelledAt: new Date(), lastError: 'automation_paused' } })).count
+      : 0;
+    await tx.activity.create({
+      data: { organizationId: tenant.organizationId, patientId: id, type: 'patient_updated', body: input.paused ? 'Avisos automáticos pausados' : 'Avisos automáticos reanudados', metadata: { automation_paused: input.paused }, authorId: tenant.userId },
+    });
+    await record(tx, { organizationId: tenant.organizationId, actorId: tenant.userId, action: input.paused ? 'patient.automation.pause' : 'patient.automation.resume', subjectId: id, metadata: { cancelled } });
+    return { ...updated, cancelled_messages: cancelled };
+  });
+  res.json(result);
+});
+
+const messagesQuery = z.object({
+  limit: z.coerce.number().int().min(1).max(100).default(30),
+  before: z.string().datetime().optional(),
+}).strict();
+
+/**
+ * The conversation with a patient: automatic notices (with delivery state) and
+ * their replies, newest first. Message text is sensitive, so it needs
+ * `outbox:view` and every read is audited.
+ */
+patientsRouter.get('/:id/messages', validateParams(patientParams), validateQuery(messagesQuery), async (req, res) => {
+  const tenant = req.tenant!;
+  requirePermission(tenant.role, 'outbox:view');
+  const { id } = res.locals.validatedParams as z.infer<typeof patientParams>;
+  const query = res.locals.validatedQuery as z.infer<typeof messagesQuery>;
+  const before = query.before ? new Date(query.before) : undefined;
+  const result = await withTenant(tenant.organizationId, async (tx) => {
+    if (!await findAccessiblePatient(tx, tenant, id)) throw new ApiError(404, 'NOT_FOUND', 'Patient not found');
+    const [sent, replies] = await Promise.all([
+      tx.outboxMessage.findMany({
+        where: { patientId: id, status: { notIn: ['dry_run'] }, ...(before ? { createdAt: { lt: before } } : {}) },
+        include: { notice: true, template: { select: { name: true } } },
+        orderBy: { createdAt: 'desc' }, take: query.limit + 1,
+      }),
+      tx.whatsappInbound.findMany({
+        where: { patientId: id, ...(before ? { receivedAt: { lt: before } } : {}) },
+        orderBy: { receivedAt: 'desc' }, take: query.limit + 1,
+      }),
+    ]);
+    const items = [
+      ...sent.map((row) => ({
+        kind: 'notice' as const, id: row.id, at: row.sentAt ?? row.createdAt, status: row.notice?.status ?? row.status, channel: row.channel,
+        attempt: row.attemptNumber, template: row.template.name, error: row.lastError,
+      })),
+      ...replies.map((row) => ({ kind: 'reply' as const, id: row.id, at: row.receivedAt, channel: row.channel, text: row.text, button: row.buttonPayload })),
+    ].sort((a, b) => b.at.getTime() - a.at.getTime());
+    const hasMore = items.length > query.limit;
+    const page = items.slice(0, query.limit);
+    await record(tx, { organizationId: tenant.organizationId, actorId: tenant.userId, action: 'patient.messages.read', subjectId: id });
+    return { data: page, next_before: hasMore ? page.at(-1)!.at.toISOString() : null };
+  });
+  res.json(result);
+});
+
+// --- Telegram: the patient links their own chat with the organization bot ---------------------
+
+/**
+ * Creates a single-use link (valid 7 days) that staff give to the patient.
+ * Opening it in Telegram links that chat to this patient, so nobody can link a
+ * chat on the patient behalf. The link is shown once; only its hash is kept.
+ */
+patientsRouter.post('/:id/telegram-link', validateParams(patientParams), async (req, res) => {
+  const tenant = req.tenant!;
+  requirePermission(tenant.role, 'patients:write');
+  const { id } = res.locals.validatedParams as z.infer<typeof patientParams>;
+  const result = await withTenant(tenant.organizationId, async (tx) => {
+    if (!await findAccessiblePatient(tx, tenant, id, { archivedAt: null })) throw new ApiError(404, 'NOT_FOUND', 'Patient not found');
+    const account = await tx.telegramAccount.findFirst();
+    if (!account) throw new ApiError(409, 'NO_TELEGRAM_BOT', 'La organización no tiene un bot de Telegram conectado');
+    const token = randomBytes(24).toString('base64url');
+    const expiresAt = new Date(Date.now() + 7 * 86_400_000);
+    await tx.telegramLinkToken.create({ data: { organizationId: tenant.organizationId, patientId: id, tokenHash: hashLinkToken(token), expiresAt, createdBy: tenant.userId } });
+    await record(tx, { organizationId: tenant.organizationId, actorId: tenant.userId, action: 'patient.telegram.link_created', subjectId: id });
+    return { url: `https://t.me/${account.botUsername}?start=${token}`, expires_at: expiresAt };
+  });
+  res.status(201).json(result);
+});
+
+patientsRouter.get('/:id/telegram', validateParams(patientParams), async (req, res) => {
+  const tenant = req.tenant!;
+  requirePermission(tenant.role, 'patients:read');
+  const { id } = res.locals.validatedParams as z.infer<typeof patientParams>;
+  const result = await withTenant(tenant.organizationId, async (tx) => {
+    if (!await findAccessiblePatient(tx, tenant, id)) throw new ApiError(404, 'NOT_FOUND', 'Patient not found');
+    const [account, link] = await Promise.all([tx.telegramAccount.findFirst({ select: { id: true } }), tx.telegramLink.findFirst({ where: { patientId: id } })]);
+    return { bot_connected: Boolean(account), linked: Boolean(link), linked_at: link?.linkedAt ?? null };
+  });
+  res.json(result);
+});
+
+patientsRouter.delete('/:id/telegram', validateParams(patientParams), async (req, res) => {
+  const tenant = req.tenant!;
+  requirePermission(tenant.role, 'patients:write');
+  const { id } = res.locals.validatedParams as z.infer<typeof patientParams>;
+  await withTenant(tenant.organizationId, async (tx) => {
+    if (!await findAccessiblePatient(tx, tenant, id)) throw new ApiError(404, 'NOT_FOUND', 'Patient not found');
+    await tx.telegramLink.deleteMany({ where: { patientId: id } });
+    await tx.telegramLinkToken.deleteMany({ where: { patientId: id, usedAt: null } });
+    await tx.outboxMessage.updateMany({ where: { patientId: id, channel: 'telegram', status: 'pending' }, data: { status: 'cancelled', cancelledAt: new Date(), lastError: 'telegram_unlinked' } });
+    await record(tx, { organizationId: tenant.organizationId, actorId: tenant.userId, action: 'patient.telegram.unlinked', subjectId: id });
+  });
+  res.status(204).end();
 });

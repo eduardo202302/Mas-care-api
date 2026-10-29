@@ -148,6 +148,10 @@ incidentsRouter.post('/', validateBody(incidentCreate), async (req, res) => {
   const input = req.body as z.infer<typeof incidentCreate>;
   const result = await withTenant(tenant.organizationId, async (tx) => {
     await assertRefs(tx, tenant, input);
+    // One open incident per cycle and type (also enforced by a partial unique index).
+    if (input.cycle_id && await tx.incident.findFirst({ where: { cycleId: input.cycle_id, type: input.type, status: { not: 'resolved' } }, select: { id: true } })) {
+      throw new ApiError(409, 'DUPLICATE_INCIDENT', 'Este ciclo ya tiene una incidencia abierta de ese tipo');
+    }
     const incident = await tx.incident.create({
       data: {
         organizationId: tenant.organizationId,

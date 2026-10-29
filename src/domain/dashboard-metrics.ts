@@ -6,9 +6,8 @@
  * the existing single-branch panel (`GET /api/v1/dashboard`) compute the same
  * five numbers from one implementation instead of two divergent copies.
  *
- * `no_response` stays hardcoded at 0 here, mirroring the existing `/dashboard`
- * behavior - there is no real "no response" detection yet (that is the scope
- * of a later, separate reports block). Do not implement it here.
+ * `no_response` counts treatments whose open cycle ran out of notice attempts without an
+ * answer, or that already has an open `patient_no_response` incident.
  */
 import type { Prisma } from '@prisma/client';
 import { addDays } from './coverage.js';
@@ -27,7 +26,22 @@ export type DashboardCounts = {
 export type DashboardCountSettings = {
   dueSoonDays: number;
   prescriptionWarningDays: number;
+  /** Attempts after which an unanswered notice counts as «sin respuesta» (3 by default). */
+  maxNoticeAttempts?: number;
 };
+
+/** Treatments with an open cycle whose notices went unanswered, or with an open no-response incident. */
+export const noResponseWhere = (maxNoticeAttempts = 3): Prisma.TreatmentWhereInput => ({
+  cycles: {
+    some: {
+      closedAt: null,
+      OR: [
+        { status: 'notified', noticeAttempts: { gte: maxNoticeAttempts } },
+        { incidents: { some: { type: 'patient_no_response', status: { not: 'resolved' } } } },
+      ],
+    },
+  },
+});
 
 /**
  * Counts the same five dashboard cards `/dashboard` renders, for one branch
@@ -55,7 +69,7 @@ export async function computeDashboardCounts(
   const branch = branchId ? { branchId } : {};
   const base: Prisma.TreatmentWhereInput = { status: 'active', ...branch };
 
-  const [overdue, todayRefills, dueSoon, pendingPickups, prescriptions] = await Promise.all([
+  const [overdue, todayRefills, dueSoon, pendingPickups, prescriptions, noResponse] = await Promise.all([
     tx.treatment.count({ where: { AND: [base, { coverageEndOn: { lt: date } }] } }),
     tx.treatment.count({ where: { AND: [base, { coverageEndOn: date }] } }),
     tx.treatment.count({ where: { AND: [base, { coverageEndOn: { gte: date, lte: dueLimit } }] } }),
@@ -67,6 +81,7 @@ export async function computeDashboardCounts(
     tx.treatment.count({
       where: { AND: [base, { prescriptionExpiresOn: { not: null, lte: prescriptionLimit } }] },
     }),
+    tx.treatment.count({ where: { AND: [base, noResponseWhere(settings.maxNoticeAttempts)] } }),
   ]);
 
   return {
@@ -75,7 +90,7 @@ export async function computeDashboardCounts(
     overdue,
     pending_pickups: pendingPickups,
     prescriptions_to_renew: prescriptions,
-    no_response: 0,
+    no_response: noResponse,
   };
 }
 

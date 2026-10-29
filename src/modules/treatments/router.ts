@@ -15,6 +15,8 @@ import { findOrCreateSetting } from '../../infra/settings.js';
 import { resolveTenant } from '../../infra/tenant.js';
 import { validateBody, validateParams, validateQuery } from '../../infra/validate.js';
 import { record } from '../audit/record.js';
+import { fireEvent } from '../automation/engine.js';
+import { resolveCustomValues } from '../custom-properties/service.js';
 import {
   defaultNoticeBody,
   normalizePhone,
@@ -189,11 +191,8 @@ treatmentsRouter.get('/', validateQuery(treatmentListQuery), async (req, res) =>
   res.json(result);
 });
 
-treatmentsRouter.post('/', validateBody(treatmentCreate), async (req, res) => {
-  const tenant = req.tenant!;
-  requirePermission(tenant.role, 'treatments:write');
-  const input = req.body as z.infer<typeof treatmentCreate>;
-  const result = await withTenant(tenant.organizationId, async (tx) => {
+/** Creates a treatment with its first refill cycle, activity, audit and automation event. Shared by the API and the CSV import. */
+export async function createTreatment(tx: Tx, tenant: NonNullable<Express.Request['tenant']>, input: z.infer<typeof treatmentCreate>) {
     if (!await findAccessiblePatient(tx, tenant, input.patient_id, { archivedAt: null })) {
       throw new ApiError(404, 'NOT_FOUND', 'Patient not found');
     }
@@ -210,8 +209,10 @@ treatmentsRouter.post('/', validateBody(treatmentCreate), async (req, res) => {
       dosePerIntake: input.dose_per_intake,
       intakesPerDay: input.intakes_per_day,
     });
+    const customValues = await resolveCustomValues(tx, 'treatment', input.custom_values, {}, 'create');
     const treatment = await tx.treatment.create({
       data: {
+        ...(customValues ? { customValues } : {}),
         organizationId: tenant.organizationId,
         patientId: input.patient_id,
         medicationId: input.medication_id,
@@ -255,6 +256,16 @@ treatmentsRouter.post('/', validateBody(treatmentCreate), async (req, res) => {
       },
     });
     await record(tx, { organizationId: tenant.organizationId, actorId: tenant.userId, action: 'treatment.create', subjectId: treatment.id });
+    await fireEvent(tx, tenant.organizationId, 'treatment_created', { patientId: treatment.patientId, treatmentId: treatment.id, cycleId: cycle.id });
+    return { treatment, cycle, settings };
+}
+
+treatmentsRouter.post('/', validateBody(treatmentCreate), async (req, res) => {
+  const tenant = req.tenant!;
+  requirePermission(tenant.role, 'treatments:write');
+  const input = req.body as z.infer<typeof treatmentCreate>;
+  const result = await withTenant(tenant.organizationId, async (tx) => {
+    const { treatment, cycle, settings } = await createTreatment(tx, tenant, input);
     return present(treatment, { ...cycle, _count: { deliveries: 0 } }, settings);
   });
   res.status(201).json(result);
@@ -295,6 +306,7 @@ treatmentsRouter.patch('/:id', validateParams(treatmentParams), validateBody(tre
       ? existing.endDate
       : input.end_date === null ? null : dateOnly(input.end_date);
     assertDateRange(startDate, endDate);
+    const patchedValues = await resolveCustomValues(tx, 'treatment', input.custom_values, existing.customValues, 'patch');
     const data: Prisma.TreatmentUncheckedUpdateInput = {
       ...nonEmpty({
         patientId: input.patient_id,
@@ -312,6 +324,7 @@ treatmentsRouter.patch('/:id', validateParams(treatmentParams), validateBody(tre
           : input.prescription_expires_on === null ? null : dateOnly(input.prescription_expires_on),
         notes: input.notes,
       }),
+      ...(patchedValues ? { customValues: patchedValues } : {}),
     };
     const scheduleChanged = input.dose_per_intake !== undefined
       || input.intakes_per_day !== undefined
@@ -638,6 +651,7 @@ treatmentsRouter.post('/:id/deliver', validateParams(treatmentParams), validateB
       },
     });
     await record(tx, { organizationId: tenant.organizationId, actorId: tenant.userId, action: 'treatment.deliver', subjectId: id });
+    await fireEvent(tx, tenant.organizationId, 'cycle_delivered', { patientId: treatment.patientId, treatmentId: id, cycleId: open.id });
     return {
       ...present(updated, { ...nextCycle, _count: { deliveries: 0 } }, settings),
       delivery,
@@ -741,4 +755,32 @@ treatmentsRouter.post('/:id/notice-logged', validateParams(treatmentParams), val
     return created;
   });
   res.status(201).json(activity);
+});
+
+const pauseInput = z.object({ paused: z.boolean(), reason: z.string().trim().max(500).nullable().optional() }).strict();
+
+/** Pauses or resumes automatic notices for one treatment. Pausing also cancels what was already waiting to go out. */
+treatmentsRouter.patch('/:id/automation', validateParams(treatmentParams), validateBody(pauseInput), async (req, res) => {
+  const tenant = req.tenant!;
+  requirePermission(tenant.role, 'treatments:write');
+  const { id } = res.locals.validatedParams as z.infer<typeof treatmentParams>;
+  const input = req.body as z.infer<typeof pauseInput>;
+  const result = await withTenant(tenant.organizationId, async (tx) => {
+    const treatment = await findTreatment(tx, tenant, id);
+    if (!treatment) throw new ApiError(404, 'NOT_FOUND', 'Treatment not found');
+    await tx.treatment.update({ where: { organizationId_id: { organizationId: tenant.organizationId, id } }, data: { automationPaused: input.paused } });
+    const cancelled = input.paused
+      ? (await tx.outboxMessage.updateMany({ where: { treatmentId: id, status: 'pending' }, data: { status: 'cancelled', cancelledAt: new Date(), lastError: 'automation_paused' } })).count
+      : 0;
+    await tx.activity.create({
+      data: {
+        organizationId: tenant.organizationId, patientId: treatment.patientId, treatmentId: id, type: 'treatment_updated',
+        body: input.paused ? 'Avisos automáticos pausados' : 'Avisos automáticos reanudados',
+        metadata: { automation_paused: input.paused, ...(input.paused && input.reason ? { reason: input.reason } : {}) }, authorId: tenant.userId,
+      },
+    });
+    await record(tx, { organizationId: tenant.organizationId, actorId: tenant.userId, action: input.paused ? 'treatment.automation.pause' : 'treatment.automation.resume', subjectId: id, metadata: { cancelled } });
+    return { id, automationPaused: input.paused, cancelled_messages: cancelled };
+  });
+  res.json(result);
 });

@@ -1,6 +1,6 @@
 import { z } from 'zod';
 
-export const savedViewEntity = z.literal('patients');
+export const savedViewEntity = z.enum(['patients', 'cycles', 'patients_columns', 'cycles_columns']);
 export const savedViewCreate = z.object({
   entity: savedViewEntity,
   name: z.string().trim().min(1).max(100),

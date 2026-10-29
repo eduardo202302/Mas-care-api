@@ -6,6 +6,7 @@ mkdir -p "$backup_dir"
 stamp="$(date -u +%Y%m%dT%H%M%SZ)"
 dump_file="$(mktemp)"
 trap 'rm -f "$dump_file"' EXIT HUP INT TERM
-docker compose exec -T postgres pg_dump -U maxcare -Fc maxcare > "$dump_file"
+: "${DIRECT_URL:?Set DIRECT_URL to the direct (non-pooler) connection string}"
+pg_dump --format=custom --no-owner --dbname="$DIRECT_URL" --file="$dump_file"
 test -s "$dump_file"
 gpg --batch --yes --trust-model always --encrypt --recipient "$GPG_RECIPIENT" --output "$backup_dir/maxcare-$stamp.dump.gpg" "$dump_file"

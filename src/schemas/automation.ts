@@ -28,3 +28,19 @@ export const automationSettingsPatch = z.object({
 export const killSwitchInput = z.object({
   branch_id: z.string().min(1).nullable().optional(),
 }).strict();
+
+export const ruleParams = z.object({ key: z.enum(['cycle_delivered', 'treatment_created', 'cycle_due_soon', 'cycle_no_response']) });
+
+export const rulePatch = z.object({
+  enabled: z.boolean().optional(),
+  params: z.object({
+    followUpDays: z.coerce.number().int().min(1).max(90).optional(),
+    days: z.coerce.number().int().min(1).max(60).optional(),
+  }).strict().optional(),
+}).strict().refine((value) => value.enabled !== undefined || value.params !== undefined, 'Proporciona al menos un campo para actualizar');
+
+export const enrollInput = z.object({
+  patientId: z.string().min(1),
+  treatmentId: z.string().min(1).optional(),
+  cycleId: z.string().min(1).optional(),
+}).strict();
