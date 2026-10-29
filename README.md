@@ -115,7 +115,7 @@ Solo se incluyen tratamientos `active`; los pausados y finalizados se excluyen d
 ### Rendimiento y transacciones
 
 - Las consultas usan los índices `(organization_id, branch_id, coverage_end_on)`, `(organization_id, prescription_expires_on)` y `(organization_id, branch_id, status, closed_at)`.
-- La prueba `keeps dashboard queries responsive with 5,000 treatments` siembra 5.000 tratamientos, ejecuta `EXPLAIN` sobre la consulta de vencidos y exige que el plan use `treatments_organization_id_branch_id_coverage_end_on_idx`; además exige una respuesta del panel en menos de 1.500 ms e imprime el tiempo medido.
+- La prueba `keeps dashboard queries responsive with 5,000 treatments` siembra 5.000 tratamientos, ejecuta `EXPLAIN` sobre la consulta de vencidos y exige que el plan use `treatments_organization_id_branch_id_coverage_end_on_idx` o `treatments_organization_id_coverage_end_on_idx`; además exige una respuesta del panel en menos de 1.500 ms e imprime el tiempo medido.
 - `rolls back delivery, cycle and coverage writes when a later step fails` fuerza un fallo después de crear la entrega y comprueba que no queda entrega, ciclo cerrado, cobertura ni actividad a medias.
 - La prueba de aislamiento RLS incluye `tasks`, `message_templates` e `import_jobs`, además del aislamiento de API entre organizaciones.
 

@@ -433,7 +433,8 @@ describe.skipIf(!enabled)('phase 1.3 daily operations', () => {
     });
     const plan = planRows.map((row) => Object.values(row).join(' ')).join('\n');
     console.info(plan);
-    expect(plan).toContain('treatments_organization_id_branch_id_coverage_end_on_idx');
+    // The planner may pick the branch-scoped or the org-wide coverage index; both avoid a seq scan.
+    expect(plan).toMatch(/treatments_organization_id(_branch_id)?_coverage_end_on_idx/);
 
     const started = performance.now();
     const dashboard = await owner.get(`/api/v1/dashboard?branch_id=${branch.id}`).expect(200);
