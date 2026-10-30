@@ -36,6 +36,18 @@ const companySelect = {
   pin: true,
   domain: true,
   logo: true,
+  phone: true,
+  ownerName: true,
+  industry: true,
+  type: true,
+  city: true,
+  state: true,
+  postalCode: true,
+  employeeCount: true,
+  annualRevenue: true,
+  timezone: true,
+  description: true,
+  linkedinUrl: true,
   createdAt: true,
   updatedAt: true,
   _count: { select: { members: true, branches: true } },
@@ -54,6 +66,7 @@ function present(company: CompanyRecord, detail = false) {
     email: company.email ?? '',
     pin: company.pin ?? '',
     domain,
+    annualRevenue: company.annualRevenue === null ? null : Number(company.annualRevenue),
     linkToken,
     ...(domain ? companyLinks(domain, linkToken) : { registrationLink: '', loginLink: '' }),
     ...(detail ? { memberCount: _count.members, branchCount: _count.branches } : {}),
@@ -149,6 +162,18 @@ companiesRouter.post('/', async (req, res, next) => {
           domain,
           pin,
           logo: input.logo?.trim() || null,
+          phone: input.phone ?? null,
+          ownerName: input.ownerName ?? null,
+          industry: input.industry ?? null,
+          type: input.type ?? null,
+          city: input.city ?? null,
+          state: input.state ?? null,
+          postalCode: input.postalCode ?? null,
+          employeeCount: input.employeeCount ?? null,
+          annualRevenue: input.annualRevenue ?? null,
+          timezone: input.timezone ?? null,
+          description: input.description ?? null,
+          linkedinUrl: input.linkedinUrl ?? null,
         },
         select: companySelect,
       });
@@ -184,6 +209,18 @@ companiesRouter.patch('/:id', async (req, res, next) => {
     if (input.pin !== undefined) data.pin = input.pin;
     if (input.domain !== undefined) data.domain = normalizeDomain(input.domain);
     if (input.logo !== undefined) data.logo = input.logo?.trim() || null;
+    if (input.phone !== undefined) data.phone = input.phone ?? null;
+    if (input.ownerName !== undefined) data.ownerName = input.ownerName ?? null;
+    if (input.industry !== undefined) data.industry = input.industry ?? null;
+    if (input.type !== undefined) data.type = input.type ?? null;
+    if (input.city !== undefined) data.city = input.city ?? null;
+    if (input.state !== undefined) data.state = input.state ?? null;
+    if (input.postalCode !== undefined) data.postalCode = input.postalCode ?? null;
+    if (input.employeeCount !== undefined) data.employeeCount = input.employeeCount ?? null;
+    if (input.annualRevenue !== undefined) data.annualRevenue = input.annualRevenue ?? null;
+    if (input.timezone !== undefined) data.timezone = input.timezone ?? null;
+    if (input.description !== undefined) data.description = input.description ?? null;
+    if (input.linkedinUrl !== undefined) data.linkedinUrl = input.linkedinUrl ?? null;
 
     let company;
     try {

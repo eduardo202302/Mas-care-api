@@ -1,10 +1,8 @@
 {
   "2": "OpenAPI Schema Definitions",
   "3": "Notification & Messaging Domain",
-  "4": "Docker & Infrastructure Config",
   "6": "CI Pipeline",
   "8": "Backup Automation",
-  "9": "CSV Import Module",
   "11": "Patient Management API",
   "12": "Runtime Dependencies",
   "13": "TypeScript Config",

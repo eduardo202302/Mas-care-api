@@ -33,6 +33,10 @@ export const menuSeeds: readonly MenuSeed[] = [
   { key: 'existencias', label: 'Existencias', path: '/ajustes/existencias', icon: 'packages', order: 67, permission: 'stock:mark', parentKey: 'ajustes' },
   { key: 'etapas', label: 'Etapas del tablero', path: '/ajustes/etapas', icon: 'kanban', order: 68, permission: 'settings:write', parentKey: 'ajustes' },
   { key: 'propiedades', label: 'Propiedades', path: '/ajustes/propiedades', icon: 'list-tree', order: 69, permission: 'settings:write', parentKey: 'ajustes' },
+  { key: 'medicos', label: 'Médicos', path: '/medicos', icon: 'stethoscope', order: 51, permission: 'doctors:read', parentKey: null },
+  { key: 'especialidades', label: 'Especialidades', path: '/especialidades', icon: 'award', order: 52, permission: 'specialties:read', parentKey: null },
+  { key: 'centros_medicos', label: 'Centros médicos', path: '/centros-medicos', icon: 'hospital', order: 53, permission: 'medical-centers:read', parentKey: null },
+  { key: 'condiciones_salud', label: 'Condiciones de salud', path: '/condiciones-salud', icon: 'heart-pulse', order: 54, permission: 'health-conditions:read', parentKey: null },
 ];
 
 export const menuItemId = (key: string) => `menu_${key}`;
@@ -46,7 +50,7 @@ export type SystemRoleSeed = {
   flags: PermissionFlags;
 };
 
-const common = ['inicio', 'tablero', 'incidencias', 'avisos', 'tareas', 'pacientes', 'medicamentos', 'ajustes', 'sucursales', 'usuarios', 'plantillas', 'umbrales', 'existencias'] as const;
+const common = ['inicio', 'tablero', 'incidencias', 'avisos', 'tareas', 'pacientes', 'medicamentos', 'ajustes', 'sucursales', 'usuarios', 'plantillas', 'umbrales', 'existencias', 'medicos', 'especialidades', 'centros_medicos', 'condiciones_salud'] as const;
 
 export const systemRoleSeeds: readonly SystemRoleSeed[] = [
   { key: 'owner', name: 'Propietario', description: 'Acceso total a la organización.', menuKeys: 'all', flags: { canView: true, canCreate: true, canEdit: true, canDelete: true } },

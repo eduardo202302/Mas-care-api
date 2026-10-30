@@ -4,8 +4,16 @@ import { branchSchema, branchInput } from '../schemas/branch.js';
 import { meSchema } from '../schemas/me.js';
 import {
   activityInput, activityListQuery, caregiverInput, caregiverParams, caregiverPatch,
-  consentInput, duplicateCheck, patientCreate, patientListQuery, patientPatch,
+  consentInput, duplicateCheck, patientConditionInput, patientConditionPatch, patientConditionStatuses,
+  patientCreate, patientDoctorInput, patientDoctorPatch, patientListQuery, patientPatch,
 } from '../schemas/patient.js';
+import {
+  doctorCreate, doctorListQuery, doctorMedicalCenterInput, doctorMedicalCenterPatch,
+  doctorPatch, doctorSpecialtyInput,
+} from '../schemas/doctor.js';
+import { specialtyCreate, specialtyListQuery, specialtyPatch } from '../schemas/medicalSpecialty.js';
+import { medicalCenterCreate, medicalCenterListQuery, medicalCenterPatch, medicalCenterTypes } from '../schemas/medicalCenter.js';
+import { conditionCreate, conditionListQuery, conditionPatch } from '../schemas/healthCondition.js';
 import { medicationCreate, medicationListQuery, medicationPatch } from '../schemas/medication.js';
 import { savedViewCreate, savedViewPatch, savedViewQuery } from '../schemas/saved-view.js';
 import { userCreate, userListQuery, userPatch } from '../schemas/user.js';
@@ -48,6 +56,11 @@ const CompanyBase = z.object({
   id: z.string(), name: z.string(), email: z.string().email(), status: z.enum(companyStatuses),
   pin: z.string(), domain: z.string(), logo: z.string().nullable(), linkToken: z.string(),
   registrationLink: z.string().url(), loginLink: z.string().url(),
+  phone: z.string().nullable(),
+  ownerName: z.string().nullable(), industry: z.string().nullable(), type: z.string().nullable(),
+  city: z.string().nullable(), state: z.string().nullable(), postalCode: z.string().nullable(),
+  employeeCount: z.number().int().nullable(), annualRevenue: z.number().nullable(),
+  timezone: z.string().nullable(), description: z.string().nullable(), linkedinUrl: z.string().nullable(),
   createdAt: z.date(), updatedAt: z.date(),
 });
 const Company = registry.register('Company', CompanyBase);
@@ -1039,6 +1052,93 @@ registry.registerPath({
   request: { params: z.object({ key: z.string() }), headers: z.object({ 'x-telegram-bot-api-secret-token': z.string() }) },
   responses: { 200: { description: 'Accepted' }, 400: err('Unreadable body'), 401: err('Missing or wrong secret'), 404: err('Unknown key') },
 });
+
+// --- Doctors / medical specialties / medical centers / health conditions ------------------------
+const MedicalSpecialty = registry.register('MedicalSpecialty', z.object({ id: z.string(), organizationId: z.string(), name: z.string(), description: z.string().nullable(), isActive: z.boolean(), createdAt: z.date(), updatedAt: z.date() }));
+const MedicalSpecialtyCreate = registry.register('MedicalSpecialtyCreate', specialtyCreate);
+const MedicalSpecialtyPatch = registry.register('MedicalSpecialtyPatch', specialtyPatch);
+const MedicalSpecialtyListQuery = registry.register('MedicalSpecialtyListQuery', specialtyListQuery);
+
+const MedicalCenter = registry.register('MedicalCenter', z.object({
+  id: z.string(), organizationId: z.string(), name: z.string(), centerType: z.enum(medicalCenterTypes),
+  rnc: z.string().nullable(), phone: z.string().nullable(), email: z.string().nullable(), address: z.string().nullable(),
+  province: z.string().nullable(), municipality: z.string().nullable(), notes: z.string().nullable(), isActive: z.boolean(),
+  createdAt: z.date(), updatedAt: z.date(),
+}));
+const MedicalCenterCreate = registry.register('MedicalCenterCreate', medicalCenterCreate);
+const MedicalCenterPatch = registry.register('MedicalCenterPatch', medicalCenterPatch);
+const MedicalCenterListQuery = registry.register('MedicalCenterListQuery', medicalCenterListQuery);
+
+const HealthCondition = registry.register('HealthCondition', z.object({ id: z.string(), organizationId: z.string(), name: z.string(), description: z.string().nullable(), isActive: z.boolean(), createdAt: z.date(), updatedAt: z.date() }));
+const HealthConditionCreate = registry.register('HealthConditionCreate', conditionCreate);
+const HealthConditionPatch = registry.register('HealthConditionPatch', conditionPatch);
+const HealthConditionListQuery = registry.register('HealthConditionListQuery', conditionListQuery);
+
+const Doctor = registry.register('Doctor', z.object({
+  id: z.string(), organizationId: z.string(), firstName: z.string(), lastName: z.string(),
+  licenseNumber: z.string().nullable(), phone: z.string().nullable(), email: z.string().nullable(),
+  notes: z.string().nullable(), isActive: z.boolean(), createdAt: z.date(), updatedAt: z.date(),
+}));
+const DoctorCreate = registry.register('DoctorCreate', doctorCreate);
+const DoctorPatch = registry.register('DoctorPatch', doctorPatch);
+const DoctorListQuery = registry.register('DoctorListQuery', doctorListQuery);
+const DoctorSpecialtyLink = registry.register('DoctorSpecialtyLink', z.object({ organizationId: z.string(), doctorId: z.string(), specialtyId: z.string(), createdAt: z.date() }));
+const DoctorSpecialtyInput = registry.register('DoctorSpecialtyInput', doctorSpecialtyInput);
+const DoctorMedicalCenterLink = registry.register('DoctorMedicalCenterLink', z.object({
+  id: z.string(), organizationId: z.string(), doctorId: z.string(), medicalCenterId: z.string(),
+  officeNumber: z.string().nullable(), position: z.string().nullable(), scheduleNotes: z.string().nullable(),
+  phoneExtension: z.string().nullable(), isActive: z.boolean(), createdAt: z.date(), updatedAt: z.date(),
+}));
+const DoctorMedicalCenterInput = registry.register('DoctorMedicalCenterInput', doctorMedicalCenterInput);
+const DoctorMedicalCenterPatch = registry.register('DoctorMedicalCenterPatch', doctorMedicalCenterPatch);
+
+const PatientDoctorLink = registry.register('PatientDoctorLink', z.object({
+  id: z.string(), organizationId: z.string(), patientId: z.string(), doctorId: z.string(),
+  isPrimary: z.boolean(), isActive: z.boolean(), notes: z.string().nullable(),
+  startedAt: z.date(), endedAt: z.date().nullable(), createdAt: z.date(), updatedAt: z.date(),
+}));
+const PatientDoctorInput = registry.register('PatientDoctorInput', patientDoctorInput);
+const PatientDoctorPatch = registry.register('PatientDoctorPatch', patientDoctorPatch);
+const PatientConditionLink = registry.register('PatientConditionLink', z.object({
+  id: z.string(), organizationId: z.string(), patientId: z.string(), healthConditionId: z.string(),
+  status: z.enum(patientConditionStatuses), diagnosedOn: z.date().nullable(), notes: z.string().nullable(),
+  isActive: z.boolean(), recordedBy: z.string(), createdAt: z.date(), updatedAt: z.date(),
+}));
+const PatientConditionInput = registry.register('PatientConditionInput', patientConditionInput);
+const PatientConditionPatch = registry.register('PatientConditionPatch', patientConditionPatch);
+
+registry.registerPath({ method: 'get', path: '/api/v1/medical-specialties', summary: 'List medical specialties', security: cookie, request: { query: MedicalSpecialtyListQuery }, responses: { 200: { description: 'Specialties', content: { 'application/json': { schema: z.object({ data: z.array(MedicalSpecialty), ...pageMeta }) } } }, 403: err('specialties:read required') } });
+registry.registerPath({ method: 'post', path: '/api/v1/medical-specialties', summary: 'Create a medical specialty', security: cookie, request: { body: { content: { 'application/json': { schema: MedicalSpecialtyCreate } } } }, responses: { 201: { description: 'Specialty created', content: { 'application/json': { schema: MedicalSpecialty } } }, 403: err('specialties:write required'), 409: err('Name already in use') } });
+registry.registerPath({ method: 'get', path: '/api/v1/medical-specialties/{id}', summary: 'Get a medical specialty', security: cookie, request: { params: idParams }, responses: { 200: { description: 'Specialty', content: { 'application/json': { schema: MedicalSpecialty } } }, 404: err('Specialty not found') } });
+registry.registerPath({ method: 'patch', path: '/api/v1/medical-specialties/{id}', summary: 'Update a medical specialty', security: cookie, request: { params: idParams, body: { content: { 'application/json': { schema: MedicalSpecialtyPatch } } } }, responses: { 200: { description: 'Specialty updated', content: { 'application/json': { schema: MedicalSpecialty } } }, 404: err('Specialty not found'), 409: err('Name already in use') } });
+
+registry.registerPath({ method: 'get', path: '/api/v1/medical-centers', summary: 'List medical centers', security: cookie, request: { query: MedicalCenterListQuery }, responses: { 200: { description: 'Medical centers', content: { 'application/json': { schema: z.object({ data: z.array(MedicalCenter), ...pageMeta }) } } }, 403: err('medical-centers:read required') } });
+registry.registerPath({ method: 'post', path: '/api/v1/medical-centers', summary: 'Create a medical center', security: cookie, request: { body: { content: { 'application/json': { schema: MedicalCenterCreate } } } }, responses: { 201: { description: 'Medical center created', content: { 'application/json': { schema: MedicalCenter } } }, 403: err('medical-centers:write required') } });
+registry.registerPath({ method: 'get', path: '/api/v1/medical-centers/{id}', summary: 'Get a medical center', security: cookie, request: { params: idParams }, responses: { 200: { description: 'Medical center', content: { 'application/json': { schema: MedicalCenter } } }, 404: err('Medical center not found') } });
+registry.registerPath({ method: 'patch', path: '/api/v1/medical-centers/{id}', summary: 'Update a medical center', security: cookie, request: { params: idParams, body: { content: { 'application/json': { schema: MedicalCenterPatch } } } }, responses: { 200: { description: 'Medical center updated', content: { 'application/json': { schema: MedicalCenter } } }, 404: err('Medical center not found') } });
+registry.registerPath({ method: 'get', path: '/api/v1/medical-centers/{id}/doctors', summary: 'List doctors linked to a medical center', security: cookie, request: { params: idParams }, responses: { 200: { description: 'Doctor links', content: { 'application/json': { schema: z.object({ data: z.array(DoctorMedicalCenterLink.extend({ doctor: Doctor })) }) } } }, 404: err('Medical center not found') } });
+
+registry.registerPath({ method: 'get', path: '/api/v1/health-conditions', summary: 'List health conditions', security: cookie, request: { query: HealthConditionListQuery }, responses: { 200: { description: 'Health conditions', content: { 'application/json': { schema: z.object({ data: z.array(HealthCondition), ...pageMeta }) } } }, 403: err('health-conditions:read required') } });
+registry.registerPath({ method: 'post', path: '/api/v1/health-conditions', summary: 'Create a health condition', security: cookie, request: { body: { content: { 'application/json': { schema: HealthConditionCreate } } } }, responses: { 201: { description: 'Health condition created', content: { 'application/json': { schema: HealthCondition } } }, 403: err('health-conditions:write required'), 409: err('Name already in use') } });
+registry.registerPath({ method: 'get', path: '/api/v1/health-conditions/{id}', summary: 'Get a health condition', security: cookie, request: { params: idParams }, responses: { 200: { description: 'Health condition', content: { 'application/json': { schema: HealthCondition } } }, 404: err('Health condition not found') } });
+registry.registerPath({ method: 'patch', path: '/api/v1/health-conditions/{id}', summary: 'Update a health condition', security: cookie, request: { params: idParams, body: { content: { 'application/json': { schema: HealthConditionPatch } } } }, responses: { 200: { description: 'Health condition updated', content: { 'application/json': { schema: HealthCondition } } }, 404: err('Health condition not found'), 409: err('Name already in use') } });
+
+registry.registerPath({ method: 'get', path: '/api/v1/doctors', summary: 'List doctors', security: cookie, request: { query: DoctorListQuery }, responses: { 200: { description: 'Doctors', content: { 'application/json': { schema: z.object({ data: z.array(Doctor), ...pageMeta }) } } }, 403: err('doctors:read required') } });
+registry.registerPath({ method: 'post', path: '/api/v1/doctors', summary: 'Create a doctor', security: cookie, request: { body: { content: { 'application/json': { schema: DoctorCreate } } } }, responses: { 201: { description: 'Doctor created', content: { 'application/json': { schema: Doctor } } }, 403: err('doctors:write required'), 409: err('License number already in use') } });
+registry.registerPath({ method: 'get', path: '/api/v1/doctors/{id}', summary: 'Get a doctor', security: cookie, request: { params: idParams }, responses: { 200: { description: 'Doctor', content: { 'application/json': { schema: Doctor } } }, 404: err('Doctor not found') } });
+registry.registerPath({ method: 'patch', path: '/api/v1/doctors/{id}', summary: 'Update a doctor', security: cookie, request: { params: idParams, body: { content: { 'application/json': { schema: DoctorPatch } } } }, responses: { 200: { description: 'Doctor updated', content: { 'application/json': { schema: Doctor } } }, 404: err('Doctor not found'), 409: err('License number already in use') } });
+registry.registerPath({ method: 'get', path: '/api/v1/doctors/{id}/patients', summary: "List a doctor's active patients", security: cookie, request: { params: idParams }, responses: { 200: { description: 'Patient links' }, 403: err('doctors:read required'), 404: err('Doctor not found') } });
+registry.registerPath({ method: 'post', path: '/api/v1/doctors/{id}/specialties', summary: 'Link a specialty to a doctor', security: cookie, request: { params: idParams, body: { content: { 'application/json': { schema: DoctorSpecialtyInput } } } }, responses: { 201: { description: 'Specialty linked', content: { 'application/json': { schema: DoctorSpecialtyLink } } }, 404: err('Doctor or specialty not found'), 409: err('Specialty already linked') } });
+registry.registerPath({ method: 'delete', path: '/api/v1/doctors/{id}/specialties/{specialtyId}', summary: 'Unlink a specialty from a doctor', security: cookie, request: { params: z.object({ id: BranchId, specialtyId: z.string() }) }, responses: { 204: { description: 'Specialty unlinked' }, 404: err('Link not found') } });
+registry.registerPath({ method: 'post', path: '/api/v1/doctors/{id}/medical-centers', summary: 'Link a medical center to a doctor', security: cookie, request: { params: idParams, body: { content: { 'application/json': { schema: DoctorMedicalCenterInput } } } }, responses: { 201: { description: 'Medical center linked', content: { 'application/json': { schema: DoctorMedicalCenterLink } } }, 404: err('Doctor or medical center not found'), 409: err('Medical center already linked') } });
+registry.registerPath({ method: 'patch', path: '/api/v1/doctors/{id}/medical-centers/{medicalCenterId}', summary: "Update a doctor's medical center link (office, position, schedule, or deactivate)", security: cookie, request: { params: z.object({ id: BranchId, medicalCenterId: z.string() }), body: { content: { 'application/json': { schema: DoctorMedicalCenterPatch } } } }, responses: { 200: { description: 'Link updated', content: { 'application/json': { schema: DoctorMedicalCenterLink } } }, 404: err('Active link not found'), 409: err('Medical center already linked') } });
+
+registry.registerPath({ method: 'get', path: '/api/v1/patients/{id}/doctors', summary: "List a patient's active doctors", security: cookie, request: { params: idParams }, responses: { 200: { description: 'Doctor links', content: { 'application/json': { schema: z.object({ data: z.array(PatientDoctorLink.extend({ doctor: Doctor.pick({ id: true, firstName: true, lastName: true, phone: true, licenseNumber: true }) })) }) } } }, 404: err('Patient not found') } });
+registry.registerPath({ method: 'post', path: '/api/v1/patients/{id}/doctors', summary: "Associate a doctor with a patient; promoting isPrimary demotes any other active primary doctor", security: cookie, request: { params: idParams, body: { content: { 'application/json': { schema: PatientDoctorInput } } } }, responses: { 201: { description: 'Doctor linked', content: { 'application/json': { schema: PatientDoctorLink } } }, 404: err('Patient or doctor not found'), 409: err('Doctor already linked') } });
+registry.registerPath({ method: 'patch', path: '/api/v1/patients/{id}/doctors/{doctorId}', summary: "Update a patient's active doctor link (notes, isPrimary, or deactivate preserving history)", security: cookie, request: { params: z.object({ id: BranchId, doctorId: z.string() }), body: { content: { 'application/json': { schema: PatientDoctorPatch } } } }, responses: { 200: { description: 'Link updated', content: { 'application/json': { schema: PatientDoctorLink } } }, 404: err('Active link not found'), 409: err('Doctor already linked') } });
+registry.registerPath({ method: 'get', path: '/api/v1/patients/{id}/conditions', summary: "List a patient's active health conditions", security: cookie, request: { params: idParams }, responses: { 200: { description: 'Condition links', content: { 'application/json': { schema: z.object({ data: z.array(PatientConditionLink.extend({ condition: HealthCondition.pick({ id: true, name: true }) })) }) } } }, 404: err('Patient not found') } });
+registry.registerPath({ method: 'post', path: '/api/v1/patients/{id}/conditions', summary: 'Register a health condition for a patient', security: cookie, request: { params: idParams, body: { content: { 'application/json': { schema: PatientConditionInput } } } }, responses: { 201: { description: 'Condition linked', content: { 'application/json': { schema: PatientConditionLink } } }, 404: err('Patient or health condition not found'), 409: err('Condition already linked') } });
+registry.registerPath({ method: 'patch', path: '/api/v1/patients/{id}/conditions/{conditionId}', summary: "Update a patient's condition record (status, diagnosedOn, notes, or deactivate preserving history)", security: cookie, request: { params: z.object({ id: BranchId, conditionId: z.string() }), body: { content: { 'application/json': { schema: PatientConditionPatch } } } }, responses: { 200: { description: 'Condition updated', content: { 'application/json': { schema: PatientConditionLink } } }, 404: err('Active condition link not found'), 409: err('Condition already linked') } });
 
 export const openApiDocument = new OpenApiGeneratorV3(registry.definitions).generateDocument({
   openapi: '3.0.3',

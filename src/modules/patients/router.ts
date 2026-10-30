@@ -15,7 +15,9 @@ import { hashLinkToken } from '../webhooks/telegram.js';
 import { customFilter, resolveCustomValues } from '../custom-properties/service.js';
 import {
   activityInput, activityListQuery, caregiverInput, caregiverParams, caregiverPatch,
-  consentInput, duplicateCheck, patientCreate, patientListQuery, patientParams, patientPatch,
+  consentInput, duplicateCheck, patientConditionInput, patientConditionParams, patientConditionPatch,
+  patientCreate, patientDoctorInput, patientDoctorParams, patientDoctorPatch,
+  patientListQuery, patientParams, patientPatch,
 } from '../../schemas/patient.js';
 import { patientTransferListQuery, transferInput } from '../../schemas/transfer.js';
 
@@ -26,6 +28,9 @@ const requirePermission = (role: Parameters<typeof puede>[0], action: Parameters
   if (!puede(role, action)) throw new ApiError(403, 'FORBIDDEN', 'Permission denied');
 };
 const nonEmpty = <T extends object>(value: T) => Object.fromEntries(Object.entries(value).filter(([, item]) => item !== undefined));
+function isUniqueConflict(error: unknown) {
+  return typeof error === 'object' && error !== null && 'code' in error && error.code === 'P2002';
+}
 const duplicateWhere = (input: { documentId?: string | null | undefined; phone?: string | null | undefined }): Prisma.PatientWhereInput => ({
   OR: [
     ...(input.documentId ? [{ documentId: input.documentId }] : []),
@@ -306,6 +311,182 @@ patientsRouter.post('/:id/consent', validateParams(patientParams), validateBody(
     return recorded;
   });
   res.status(201).json(consent);
+});
+
+// --- Patient doctors (many-to-many, history-preserving via isActive) -------------
+
+patientsRouter.get('/:id/doctors', validateParams(patientParams), async (req, res) => {
+  const tenant = req.tenant!;
+  requirePermission(tenant.role, 'patients:read');
+  const { id } = res.locals.validatedParams as z.infer<typeof patientParams>;
+  const data = await withTenant(tenant.organizationId, async (tx) => {
+    if (!await findAccessiblePatient(tx, tenant, id)) throw new ApiError(404, 'NOT_FOUND', 'Patient not found');
+    return tx.patientDoctor.findMany({
+      where: { patientId: id, isActive: true },
+      orderBy: [{ isPrimary: 'desc' }, { startedAt: 'desc' }],
+      include: { doctor: { select: { id: true, firstName: true, lastName: true, phone: true, licenseNumber: true } } },
+    });
+  });
+  res.json({ data });
+});
+
+patientsRouter.post('/:id/doctors', validateParams(patientParams), validateBody(patientDoctorInput), async (req, res, next) => {
+  try {
+    const tenant = req.tenant!;
+    requirePermission(tenant.role, 'patients:write');
+    const { id } = res.locals.validatedParams as z.infer<typeof patientParams>;
+    const input = req.body as z.infer<typeof patientDoctorInput>;
+    const link = await withTenant(tenant.organizationId, async (tx) => {
+      if (!await findAccessiblePatient(tx, tenant, id, { archivedAt: null })) throw new ApiError(404, 'NOT_FOUND', 'Patient not found');
+      const doctor = await tx.doctor.findUnique({ where: { id: input.doctorId } });
+      if (!doctor) throw new ApiError(404, 'DOCTOR_NOT_FOUND', 'Médico no encontrado.');
+      if (input.isPrimary) {
+        await tx.patientDoctor.updateMany({
+          where: { organizationId: tenant.organizationId, patientId: id, isActive: true, isPrimary: true },
+          data: { isPrimary: false },
+        });
+      }
+      let created;
+      try {
+        created = await tx.patientDoctor.create({
+          data: {
+            organizationId: tenant.organizationId, patientId: id, doctorId: input.doctorId, isPrimary: input.isPrimary,
+            ...(input.notes !== undefined ? { notes: input.notes } : {}),
+          } as Prisma.PatientDoctorUncheckedCreateInput,
+        });
+      } catch (error) {
+        if (isUniqueConflict(error)) throw new ApiError(409, 'DOCTOR_ALREADY_LINKED', 'El médico ya está asociado activamente a este paciente.');
+        throw error;
+      }
+      await record(tx, { organizationId: tenant.organizationId, actorId: tenant.userId, action: 'patient.doctor.add', subjectId: id, metadata: { doctorId: input.doctorId } });
+      return created;
+    });
+    res.status(201).json(link);
+  } catch (error) {
+    next(error);
+  }
+});
+
+patientsRouter.patch('/:id/doctors/:doctorId', validateParams(patientDoctorParams), validateBody(patientDoctorPatch), async (req, res, next) => {
+  try {
+    const tenant = req.tenant!;
+    requirePermission(tenant.role, 'patients:write');
+    const { id, doctorId } = res.locals.validatedParams as z.infer<typeof patientDoctorParams>;
+    const input = req.body as z.infer<typeof patientDoctorPatch>;
+    const link = await withTenant(tenant.organizationId, async (tx) => {
+      if (!await findAccessiblePatient(tx, tenant, id, { archivedAt: null })) throw new ApiError(404, 'NOT_FOUND', 'Patient not found');
+      const existing = await tx.patientDoctor.findFirst({ where: { patientId: id, doctorId, isActive: true } });
+      if (!existing) throw new ApiError(404, 'NOT_FOUND', 'El paciente no tiene un vínculo activo con este médico.');
+      if (input.isPrimary) {
+        await tx.patientDoctor.updateMany({
+          where: { organizationId: tenant.organizationId, patientId: id, isActive: true, isPrimary: true, NOT: { id: existing.id } },
+          data: { isPrimary: false },
+        });
+      }
+      const { isActive, ...rest } = input;
+      let updated;
+      try {
+        updated = await tx.patientDoctor.update({
+          where: { organizationId_id: { organizationId: tenant.organizationId, id: existing.id } },
+          data: {
+            ...nonEmpty(rest),
+            ...(isActive !== undefined ? { isActive, endedAt: isActive ? null : new Date() } : {}),
+          } as Prisma.PatientDoctorUncheckedUpdateInput,
+        });
+      } catch (error) {
+        if (isUniqueConflict(error)) throw new ApiError(409, 'DOCTOR_ALREADY_LINKED', 'El médico ya está asociado activamente a este paciente.');
+        throw error;
+      }
+      await record(tx, { organizationId: tenant.organizationId, actorId: tenant.userId, action: 'patient.doctor.update', subjectId: id, metadata: { doctorId } });
+      return updated;
+    });
+    res.json(link);
+  } catch (error) {
+    next(error);
+  }
+});
+
+// --- Patient health conditions (many-to-many, history-preserving via isActive) ---
+
+patientsRouter.get('/:id/conditions', validateParams(patientParams), async (req, res) => {
+  const tenant = req.tenant!;
+  requirePermission(tenant.role, 'patients:read');
+  const { id } = res.locals.validatedParams as z.infer<typeof patientParams>;
+  const data = await withTenant(tenant.organizationId, async (tx) => {
+    if (!await findAccessiblePatient(tx, tenant, id)) throw new ApiError(404, 'NOT_FOUND', 'Patient not found');
+    return tx.patientCondition.findMany({
+      where: { patientId: id, isActive: true },
+      orderBy: [{ createdAt: 'desc' }],
+      include: { condition: { select: { id: true, name: true } } },
+    });
+  });
+  res.json({ data });
+});
+
+patientsRouter.post('/:id/conditions', validateParams(patientParams), validateBody(patientConditionInput), async (req, res, next) => {
+  try {
+    const tenant = req.tenant!;
+    requirePermission(tenant.role, 'patients:write');
+    const { id } = res.locals.validatedParams as z.infer<typeof patientParams>;
+    const input = req.body as z.infer<typeof patientConditionInput>;
+    const link = await withTenant(tenant.organizationId, async (tx) => {
+      if (!await findAccessiblePatient(tx, tenant, id, { archivedAt: null })) throw new ApiError(404, 'NOT_FOUND', 'Patient not found');
+      const condition = await tx.healthCondition.findUnique({ where: { id: input.healthConditionId } });
+      if (!condition) throw new ApiError(404, 'CONDITION_NOT_FOUND', 'Condición de salud no encontrada.');
+      let created;
+      try {
+        created = await tx.patientCondition.create({
+          data: {
+            organizationId: tenant.organizationId, patientId: id, healthConditionId: input.healthConditionId,
+            status: input.status, recordedBy: tenant.userId,
+            ...(input.diagnosedOn !== undefined ? { diagnosedOn: input.diagnosedOn ? new Date(`${input.diagnosedOn}T00:00:00.000Z`) : null } : {}),
+            ...(input.notes !== undefined ? { notes: input.notes } : {}),
+          } as Prisma.PatientConditionUncheckedCreateInput,
+        });
+      } catch (error) {
+        if (isUniqueConflict(error)) throw new ApiError(409, 'CONDITION_ALREADY_LINKED', 'Esta condición ya está registrada activamente para el paciente.');
+        throw error;
+      }
+      await record(tx, { organizationId: tenant.organizationId, actorId: tenant.userId, action: 'patient.condition.add', subjectId: id, metadata: { healthConditionId: input.healthConditionId } });
+      return created;
+    });
+    res.status(201).json(link);
+  } catch (error) {
+    next(error);
+  }
+});
+
+patientsRouter.patch('/:id/conditions/:conditionId', validateParams(patientConditionParams), validateBody(patientConditionPatch), async (req, res, next) => {
+  try {
+    const tenant = req.tenant!;
+    requirePermission(tenant.role, 'patients:write');
+    const { id, conditionId } = res.locals.validatedParams as z.infer<typeof patientConditionParams>;
+    const input = req.body as z.infer<typeof patientConditionPatch>;
+    const link = await withTenant(tenant.organizationId, async (tx) => {
+      if (!await findAccessiblePatient(tx, tenant, id, { archivedAt: null })) throw new ApiError(404, 'NOT_FOUND', 'Patient not found');
+      const existing = await tx.patientCondition.findFirst({ where: { patientId: id, healthConditionId: conditionId, isActive: true } });
+      if (!existing) throw new ApiError(404, 'NOT_FOUND', 'El paciente no tiene esta condición registrada activamente.');
+      const { diagnosedOn, ...rest } = input;
+      let updated;
+      try {
+        updated = await tx.patientCondition.update({
+          where: { organizationId_id: { organizationId: tenant.organizationId, id: existing.id } },
+          data: {
+            ...nonEmpty(rest),
+            ...(diagnosedOn !== undefined ? { diagnosedOn: diagnosedOn ? new Date(`${diagnosedOn}T00:00:00.000Z`) : null } : {}),
+          } as Prisma.PatientConditionUncheckedUpdateInput,
+        });
+      } catch (error) {
+        if (isUniqueConflict(error)) throw new ApiError(409, 'CONDITION_ALREADY_LINKED', 'Esta condición ya está registrada activamente para el paciente.');
+        throw error;
+      }
+      await record(tx, { organizationId: tenant.organizationId, actorId: tenant.userId, action: 'patient.condition.update', subjectId: id, metadata: { healthConditionId: conditionId } });
+      return updated;
+    });
+    res.json(link);
+  } catch (error) {
+    next(error);
+  }
 });
 
 patientsRouter.get('/:id/incidents', validateParams(patientParams), async (req, res) => {

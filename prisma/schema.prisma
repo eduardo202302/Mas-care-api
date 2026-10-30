@@ -128,6 +128,8 @@ model Patient {
   telegramLinks          TelegramLink[]
   telegramLinkTokens     TelegramLinkToken[]
   transfers              PatientTransfer[]
+  doctors                PatientDoctor[]
+  conditions             PatientCondition[]
   numericId              BigInt              @unique @default(dbgenerated("nextval('global_numeric_id_seq'::regclass)")) @map("numeric_id")
 
   @@unique([organizationId, id])
@@ -236,6 +238,221 @@ model Medication {
   @@index([genericName(ops: raw("gin_trgm_ops"))], type: Gin, map: "medications_generic_name_trgm_idx")
   @@index([activeIngredient(ops: raw("gin_trgm_ops"))], type: Gin, map: "medications_active_ingredient_trgm_idx")
   @@map("medications")
+}
+
+model Doctor {
+  id             String                @id @default(cuid())
+  organizationId String                @map("organization_id")
+  firstName      String                @map("first_name")
+  lastName       String                @map("last_name")
+  licenseNumber  String?               @map("license_number")
+  phone          String?
+  email          String?
+  notes          String?               @db.Text
+  isActive       Boolean               @default(true) @map("is_active")
+  createdAt      DateTime              @default(now()) @map("created_at")
+  updatedAt      DateTime              @updatedAt @map("updated_at")
+  organization   Organization          @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  specialties    DoctorSpecialty[]
+  medicalCenters DoctorMedicalCenter[]
+  patients       PatientDoctor[]
+  numericId      BigInt                @unique @default(dbgenerated("nextval('global_numeric_id_seq'::regclass)")) @map("numeric_id")
+
+  @@unique([organizationId, id])
+  @@index([organizationId, isActive])
+  @@index([lastName(ops: raw("gin_trgm_ops"))], type: Gin, map: "doctors_last_name_trgm_idx")
+  @@index([firstName(ops: raw("gin_trgm_ops"))], type: Gin, map: "doctors_first_name_trgm_idx")
+  @@index([licenseNumber(ops: raw("gin_trgm_ops"))], type: Gin, map: "doctors_license_number_trgm_idx")
+  @@map("doctors")
+}
+
+model MedicalSpecialty {
+  id             String            @id @default(cuid())
+  organizationId String            @map("organization_id")
+  name           String
+  description    String?           @db.Text
+  isActive       Boolean           @default(true) @map("is_active")
+  createdAt      DateTime          @default(now()) @map("created_at")
+  updatedAt      DateTime          @updatedAt @map("updated_at")
+  organization   Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  doctors        DoctorSpecialty[]
+  numericId      BigInt            @unique @default(dbgenerated("nextval('global_numeric_id_seq'::regclass)")) @map("numeric_id")
+
+  @@unique([organizationId, id])
+  @@unique([organizationId, name])
+  @@index([organizationId, isActive])
+  @@index([name(ops: raw("gin_trgm_ops"))], type: Gin, map: "medical_specialties_name_trgm_idx")
+  @@map("medical_specialties")
+}
+
+/**
+ * Doctor <-> specialty link, no payload beyond createdAt. Mirrors
+ * BranchMember's composite-PK-no-id shape: the PK itself is the uniqueness
+ * guard, so no extra duplicate check is needed when adding one.
+ */
+model DoctorSpecialty {
+  organizationId String           @map("organization_id")
+  doctorId       String           @map("doctor_id")
+  specialtyId    String           @map("specialty_id")
+  createdAt      DateTime         @default(now()) @map("created_at")
+  doctor         Doctor           @relation(fields: [organizationId, doctorId], references: [organizationId, id], onDelete: Cascade)
+  specialty      MedicalSpecialty @relation(fields: [organizationId, specialtyId], references: [organizationId, id], onDelete: Cascade)
+
+  @@id([organizationId, doctorId, specialtyId])
+  @@index([organizationId, specialtyId])
+  @@map("doctor_specialties")
+}
+
+enum MedicalCenterType {
+  clinic
+  hospital
+  medical_center
+  private_office
+  other
+
+  @@map("medical_center_type")
+}
+
+model MedicalCenter {
+  id             String                @id @default(cuid())
+  organizationId String                @map("organization_id")
+  name           String
+  centerType     MedicalCenterType     @default(clinic) @map("center_type")
+  rnc            String?
+  phone          String?
+  email          String?
+  address        String?               @db.Text
+  province       String?
+  municipality   String?
+  notes          String?               @db.Text
+  isActive       Boolean               @default(true) @map("is_active")
+  createdAt      DateTime              @default(now()) @map("created_at")
+  updatedAt      DateTime              @updatedAt @map("updated_at")
+  organization   Organization          @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  doctors        DoctorMedicalCenter[]
+  numericId      BigInt                @unique @default(dbgenerated("nextval('global_numeric_id_seq'::regclass)")) @map("numeric_id")
+
+  @@unique([organizationId, id])
+  @@index([organizationId, isActive])
+  @@index([name(ops: raw("gin_trgm_ops"))], type: Gin, map: "medical_centers_name_trgm_idx")
+  @@map("medical_centers")
+}
+
+/**
+ * Doctor <-> medical center link with its own id (unlike DoctorSpecialty)
+ * because a doctor can leave and later rejoin a center: `isActive` closes
+ * one stint without deleting it, so history survives. Only one active row
+ * per (doctor, center) pair is allowed, enforced by a partial unique index
+ * (WHERE is_active) added by hand in the migration SQL, since Prisma's
+ * schema DSL cannot express a WHERE clause on @@unique.
+ */
+model DoctorMedicalCenter {
+  id              String        @id @default(cuid())
+  organizationId  String        @map("organization_id")
+  doctorId        String        @map("doctor_id")
+  medicalCenterId String        @map("medical_center_id")
+  officeNumber    String?       @map("office_number")
+  position        String?
+  scheduleNotes   String?       @map("schedule_notes") @db.Text
+  phoneExtension  String?       @map("phone_extension")
+  isActive        Boolean       @default(true) @map("is_active")
+  createdAt       DateTime      @default(now()) @map("created_at")
+  updatedAt       DateTime      @updatedAt @map("updated_at")
+  doctor          Doctor        @relation(fields: [organizationId, doctorId], references: [organizationId, id], onDelete: Cascade)
+  medicalCenter   MedicalCenter @relation(fields: [organizationId, medicalCenterId], references: [organizationId, id], onDelete: Cascade)
+  numericId       BigInt        @unique @default(dbgenerated("nextval('global_numeric_id_seq'::regclass)")) @map("numeric_id")
+
+  @@unique([organizationId, id])
+  @@index([organizationId, doctorId])
+  @@index([organizationId, medicalCenterId])
+  @@map("doctor_medical_centers")
+}
+
+model HealthCondition {
+  id             String             @id @default(cuid())
+  organizationId String             @map("organization_id")
+  name           String
+  description    String?            @db.Text
+  isActive       Boolean            @default(true) @map("is_active")
+  createdAt      DateTime           @default(now()) @map("created_at")
+  updatedAt      DateTime           @updatedAt @map("updated_at")
+  organization   Organization       @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  patients       PatientCondition[]
+  numericId      BigInt             @unique @default(dbgenerated("nextval('global_numeric_id_seq'::regclass)")) @map("numeric_id")
+
+  @@unique([organizationId, id])
+  @@unique([organizationId, name])
+  @@index([organizationId, isActive])
+  @@index([name(ops: raw("gin_trgm_ops"))], type: Gin, map: "health_conditions_name_trgm_idx")
+  @@map("health_conditions")
+}
+
+/**
+ * Patient <-> doctor link. `isPrimary` marks the attending doctor; only one
+ * active primary per patient is allowed, and only one active row per
+ * (patient, doctor) pair, both enforced by partial unique indexes added by
+ * hand in the migration SQL (same WHERE-clause limitation as
+ * DoctorMedicalCenter). Deactivating a link sets isActive/endedAt instead of
+ * deleting the row, so clinical history is never lost.
+ */
+model PatientDoctor {
+  id             String    @id @default(cuid())
+  organizationId String    @map("organization_id")
+  patientId      String    @map("patient_id")
+  doctorId       String    @map("doctor_id")
+  isPrimary      Boolean   @default(false) @map("is_primary")
+  isActive       Boolean   @default(true) @map("is_active")
+  notes          String?   @db.Text
+  startedAt      DateTime  @default(now()) @map("started_at")
+  endedAt        DateTime? @map("ended_at")
+  createdAt      DateTime  @default(now()) @map("created_at")
+  updatedAt      DateTime  @updatedAt @map("updated_at")
+  patient        Patient   @relation(fields: [organizationId, patientId], references: [organizationId, id], onDelete: Cascade)
+  doctor         Doctor    @relation(fields: [organizationId, doctorId], references: [organizationId, id], onDelete: Cascade)
+  numericId      BigInt    @unique @default(dbgenerated("nextval('global_numeric_id_seq'::regclass)")) @map("numeric_id")
+
+  @@unique([organizationId, id])
+  @@index([organizationId, patientId, isActive])
+  @@index([organizationId, doctorId])
+  @@map("patient_doctors")
+}
+
+enum PatientConditionStatus {
+  active
+  controlled
+  resolved
+
+  @@map("patient_condition_status")
+}
+
+/**
+ * Patient <-> health condition link. Edits (status change, notes) update
+ * this row in place; the audit log (not row versioning) is what preserves
+ * history of those edits. Only one active row per (patient, condition) pair
+ * is allowed, enforced by a partial unique index added by hand in the
+ * migration SQL.
+ */
+model PatientCondition {
+  id                String                 @id @default(cuid())
+  organizationId    String                 @map("organization_id")
+  patientId         String                 @map("patient_id")
+  healthConditionId String                 @map("health_condition_id")
+  status            PatientConditionStatus @default(active)
+  diagnosedOn       DateTime?              @map("diagnosed_on") @db.Date
+  notes             String?                @db.Text
+  isActive          Boolean                @default(true) @map("is_active")
+  recordedBy        String                 @map("recorded_by")
+  createdAt         DateTime               @default(now()) @map("created_at")
+  updatedAt         DateTime               @updatedAt @map("updated_at")
+  patient           Patient                @relation(fields: [organizationId, patientId], references: [organizationId, id], onDelete: Cascade)
+  condition         HealthCondition        @relation(fields: [organizationId, healthConditionId], references: [organizationId, id], onDelete: Cascade)
+  recorder          User                   @relation(fields: [recordedBy], references: [id], onDelete: Restrict)
+  numericId         BigInt                 @unique @default(dbgenerated("nextval('global_numeric_id_seq'::regclass)")) @map("numeric_id")
+
+  @@unique([organizationId, id])
+  @@index([organizationId, patientId, isActive])
+  @@index([organizationId, healthConditionId])
+  @@map("patient_conditions")
 }
 
 enum TreatmentStatus {
@@ -789,6 +1006,7 @@ model User {
   responsiblePatients   Patient[]             @relation("PatientResponsible")
   createdPatients       Patient[]             @relation("PatientCreator")
   recordedConsents      PatientConsent[]
+  recordedConditions    PatientCondition[]
   responsibleTreatments Treatment[]           @relation("TreatmentResponsible")
   recordedDeliveries    Delivery[]            @relation("DeliveryRecordedBy")
   activities            Activity[]
@@ -888,6 +1106,18 @@ model Organization {
   status             OrganizationStatus  @default(active)
   pin                String?             @unique
   domain             String?
+  phone              String?
+  ownerName          String?             @map("owner_name")
+  industry           String?
+  type               String?
+  city               String?
+  state              String?
+  postalCode         String?             @map("postal_code")
+  employeeCount      Int?                @map("employee_count")
+  annualRevenue      Decimal?            @map("annual_revenue") @db.Decimal(18, 2)
+  timezone           String?
+  description        String?
+  linkedinUrl        String?             @map("linkedin_url")
   updatedAt          DateTime            @default(now()) @updatedAt @map("updated_at")
   members            Member[]
   invitations        Invitation[]
@@ -915,6 +1145,10 @@ model Organization {
   telegramLinks      TelegramLink[]
   telegramLinkTokens TelegramLinkToken[]
   customProperties   CustomProperty[]
+  doctors            Doctor[]
+  medicalSpecialties MedicalSpecialty[]
+  medicalCenters     MedicalCenter[]
+  healthConditions   HealthCondition[]
   numericId          BigInt              @unique @default(dbgenerated("nextval('global_numeric_id_seq'::regclass)")) @map("numeric_id")
 
   @@unique([slug])

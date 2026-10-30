@@ -41,6 +41,9 @@ export const companyLogo = z
   .nullable()
   .optional();
 
+const optionalText = (max: number) =>
+  z.string().trim().max(max).optional().or(z.literal('').transform(() => undefined));
+
 export const companyCreate = z
   .object({
     name: z.string().trim().min(2, 'Ingresa al menos 2 caracteres.').max(120),
@@ -49,6 +52,29 @@ export const companyCreate = z
     pin: companyPin.optional(),
     domain: companyDomain,
     logo: companyLogo,
+    phone: optionalText(30),
+    ownerName: optionalText(120),
+    industry: optionalText(120),
+    type: optionalText(60),
+    city: optionalText(120),
+    state: optionalText(120),
+    postalCode: optionalText(20),
+    employeeCount: z.preprocess(
+      (value) => (value === '' || value === null ? undefined : value),
+      z.coerce.number().int().min(0).max(10_000_000).optional(),
+    ),
+    annualRevenue: z.preprocess(
+      (value) => (value === '' || value === null ? undefined : value),
+      z.coerce.number().min(0).max(1_000_000_000_000).optional(),
+    ),
+    timezone: optionalText(60),
+    description: optionalText(2_000),
+    linkedinUrl: z
+      .string()
+      .trim()
+      .max(300)
+      .optional()
+      .or(z.literal('').transform(() => undefined)),
   })
   .strict();
 

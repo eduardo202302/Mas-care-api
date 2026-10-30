@@ -71,6 +71,33 @@ export const consentInput = z.object({
   evidence: z.string().trim().max(1000).nullable().optional(),
 }).strict();
 
+export const patientDoctorInput = z.object({
+  doctorId: z.string().min(1),
+  isPrimary: z.boolean().default(false),
+  notes: z.string().trim().max(2000).nullable().optional(),
+}).strict();
+export const patientDoctorPatch = z.object({
+  isPrimary: z.boolean().optional(),
+  isActive: z.boolean().optional(),
+  notes: z.string().trim().max(2000).nullable().optional(),
+}).strict().refine((value) => Object.keys(value).length > 0, 'Proporciona al menos un campo para actualizar');
+export const patientDoctorParams = patientParams.extend({ doctorId: z.string().min(1) });
+
+export const patientConditionStatuses = ['active', 'controlled', 'resolved'] as const;
+export const patientConditionInput = z.object({
+  healthConditionId: z.string().min(1),
+  status: z.enum(patientConditionStatuses).default('active'),
+  diagnosedOn: z.string().date().nullable().optional(),
+  notes: z.string().trim().max(2000).nullable().optional(),
+}).strict();
+export const patientConditionPatch = z.object({
+  status: z.enum(patientConditionStatuses).optional(),
+  diagnosedOn: z.string().date().nullable().optional(),
+  notes: z.string().trim().max(2000).nullable().optional(),
+  isActive: z.boolean().optional(),
+}).strict().refine((value) => Object.keys(value).length > 0, 'Proporciona al menos un campo para actualizar');
+export const patientConditionParams = patientParams.extend({ conditionId: z.string().min(1) });
+
 export const activityInput = z.object({
   type: z.enum(['note', 'call', 'email', 'meeting']),
   body: z.string().trim().min(1).max(5000),
