@@ -1,6 +1,6 @@
 import { OpenAPIRegistry, OpenApiGeneratorV3, extendZodWithOpenApi } from '@asteasolutions/zod-to-openapi';
 import { z } from 'zod';
-import { branchSchema, branchInput } from '../schemas/branch.js';
+import { branchSchema, branchInput, branchListQuery } from '../schemas/branch.js';
 import { meSchema } from '../schemas/me.js';
 import {
   activityInput, activityListQuery, caregiverInput, caregiverParams, caregiverPatch,
@@ -19,6 +19,12 @@ import { savedViewCreate, savedViewPatch, savedViewQuery } from '../schemas/save
 import { userCreate, userListQuery, userPatch } from '../schemas/user.js';
 import { companyCreate, companyListQuery, companyPatch, companyStatuses } from '../schemas/company.js';
 import {
+  companyActivityCreate, companyActivityListQuery, companyActivityPatch, companyActivityTypes,
+} from '../schemas/company-activity.js';
+import {
+  dealCreate, dealListQuery, dealPatch, dealPipelines, dealPriorities, dealStages, dealTypes,
+} from '../schemas/deal.js';
+import {
   coverageAdjustInput,
   prescriptionRenewInput,
   statusReasonInput,
@@ -32,7 +38,6 @@ import { deliveryInput, noticeLoggedInput, noticePreviewQuery } from '../schemas
 import { taskCreate, taskListQuery, taskPatch } from '../schemas/task.js';
 import { templateCreate, templateListQuery, templatePatch } from '../schemas/message-template.js';
 import { columnMapping } from '../schemas/import.js';
-import { optionalPaging } from '../infra/pagination.js';
 import { menuCreate, menuItemSchema, menuListQuery, menuPatch, menuReorder } from '../schemas/menu.js';
 import { roleCreate, roleListQuery, rolePatch, roleSchema } from '../schemas/role.js';
 import {
@@ -53,20 +58,54 @@ const pageMeta = { total: z.number().int(), page: z.number().int(), rows: z.numb
 const registry = new OpenAPIRegistry();
 const Me = registry.register('Me', meSchema);
 const CompanyBase = z.object({
-  id: z.string(), name: z.string(), email: z.string().email(), status: z.enum(companyStatuses),
+  id: z.string(), numericId: z.string(), name: z.string(), email: z.string().email(), status: z.enum(companyStatuses),
   pin: z.string(), domain: z.string(), logo: z.string().nullable(), linkToken: z.string(),
   registrationLink: z.string().url(), loginLink: z.string().url(),
   phone: z.string().nullable(),
   ownerName: z.string().nullable(), industry: z.string().nullable(), type: z.string().nullable(),
   city: z.string().nullable(), state: z.string().nullable(), postalCode: z.string().nullable(),
+  address: z.string().nullable(), sector: z.string().nullable(), latitude: z.string().nullable(), longitude: z.string().nullable(),
   employeeCount: z.number().int().nullable(), annualRevenue: z.number().nullable(),
   timezone: z.string().nullable(), description: z.string().nullable(), linkedinUrl: z.string().nullable(),
+  googleMapsApiKey: z.string().nullable(),
   createdAt: z.date(), updatedAt: z.date(),
 });
 const Company = registry.register('Company', CompanyBase);
+const CompanyContact = registry.register('CompanyContact', z.object({
+  id: z.string(), fullName: z.string(), email: z.string().nullable(), phone: z.string().nullable(),
+}));
 const CompanyDetail = registry.register('CompanyDetail', CompanyBase.extend({
   memberCount: z.number().int(), branchCount: z.number().int(),
+  patientCount: z.number().int(), openCycleCount: z.number().int(), openIncidentCount: z.number().int(),
+  contacts: z.array(CompanyContact),
 }));
+const CompanyActivity = registry.register('CompanyActivity', z.object({
+  id: z.string(), numericId: z.string(), type: z.enum(companyActivityTypes),
+  title: z.string().nullable(), body: z.string().nullable(), contactName: z.string().nullable(),
+  dueAt: z.date().nullable(), completedAt: z.date().nullable(), occurredAt: z.date(),
+  createdAt: z.date(), updatedAt: z.date(), authorId: z.string(), authorName: z.string(),
+}));
+const CompanyActivityCreate = registry.register('CompanyActivityCreate', companyActivityCreate);
+const CompanyActivityPatch = registry.register('CompanyActivityPatch', companyActivityPatch);
+const CompanyActivityListQuery = registry.register('CompanyActivityListQuery', companyActivityListQuery);
+const DealLineItem = registry.register('DealLineItem', z.object({
+  id: z.string(), name: z.string(), quantity: z.number(), unitPrice: z.number(),
+}));
+const Deal = registry.register('Deal', z.object({
+  id: z.string(), numericId: z.string(), name: z.string(),
+  pipeline: z.enum(dealPipelines), stage: z.enum(dealStages), dealType: z.enum(dealTypes), priority: z.enum(dealPriorities),
+  amount: z.number().nullable(),
+  closeDate: z.date().nullable(), contactId: z.string().nullable(), contactName: z.string().nullable(),
+  ownerUserId: z.string().nullable(), ownerName: z.string().nullable(),
+  lineItems: z.array(DealLineItem),
+  createdAt: z.date(), updatedAt: z.date(),
+}));
+const CompanyMember = registry.register('CompanyMember', z.object({
+  id: z.string(), name: z.string(), email: z.string(),
+}));
+const DealCreate = registry.register('DealCreate', dealCreate);
+const DealPatch = registry.register('DealPatch', dealPatch);
+const DealListQuery = registry.register('DealListQuery', dealListQuery);
 const CompanyCreate = registry.register('CompanyCreate', companyCreate);
 const CompanyPatch = registry.register('CompanyPatch', companyPatch);
 const CompanyListQuery = registry.register('CompanyListQuery', companyListQuery);
@@ -74,10 +113,11 @@ const CompanyId = z.string().min(1).openapi({ param: { name: 'id', in: 'path' },
 const Branch = registry.register('Branch', branchSchema);
 const BranchInput = registry.register('BranchInput', branchInput);
 const BranchPatch = registry.register('BranchPatch', branchInput.partial().strict());
+const BranchListQuery = registry.register('BranchListQuery', branchListQuery);
 const Patient = registry.register('Patient', z.object({
   id: z.string(), numericId: z.string(), organizationId: z.string(), primaryBranchId: z.string(), fullName: z.string(),
   documentId: z.string().nullable(), birthDate: z.date().nullable(), phone: z.string().nullable(),
-  phoneHasWhatsapp: z.boolean(), email: z.string().nullable(), address: z.string().nullable(), zone: z.string().nullable(),
+  phoneHasWhatsapp: z.boolean(), email: z.string().nullable(), addressDetails: z.record(z.string(), z.unknown()).nullable(),
   preferredChannel: z.enum(['whatsapp', 'call', 'sms']), reminderConsent: z.boolean(), reminderConsentAt: z.date().nullable(),
   careNotes: z.string().nullable(), responsibleUserId: z.string().nullable(), createdBy: z.string(), createdAt: z.date(), archivedAt: z.date().nullable(),
 }));
@@ -86,7 +126,7 @@ const PatientDuplicate = registry.register('PatientDuplicate', z.object({ id: z.
 const PatientPatch = registry.register('PatientPatch', patientPatch);
 const PatientListQuery = registry.register('PatientListQuery', patientListQuery);
 const DuplicateCheck = registry.register('PatientDuplicateCheck', duplicateCheck);
-const Caregiver = registry.register('PatientCaregiver', z.object({ id: z.string(), organizationId: z.string(), patientId: z.string(), fullName: z.string(), phone: z.string(), relationship: z.string(), isPrimary: z.boolean() }));
+const Caregiver = registry.register('PatientCaregiver', z.object({ id: z.string(), organizationId: z.string(), patientId: z.string(), fullName: z.string(), phone: z.string(), relationship: z.string(), addressDetails: z.record(z.string(), z.unknown()).nullable(), isPrimary: z.boolean() }));
 const CaregiverInput = registry.register('CaregiverInput', caregiverInput);
 const CaregiverPatch = registry.register('CaregiverPatch', caregiverPatch);
 const ConsentInput = registry.register('ConsentInput', consentInput);
@@ -94,7 +134,7 @@ const Consent = registry.register('PatientConsent', z.object({ id: z.string(), o
 const Activity = registry.register('Activity', z.object({ id: z.string(), organizationId: z.string(), type: z.string(), patientId: z.string(), treatmentId: z.string().nullable(), cycleId: z.string().nullable(), body: z.string(), metadata: z.record(z.string(), z.unknown()), authorId: z.string(), occurredAt: z.date() }));
 const ActivityInput = registry.register('ActivityInput', activityInput);
 const ActivityListQuery = registry.register('ActivityListQuery', activityListQuery);
-const Medication = registry.register('Medication', z.object({ id: z.string(), organizationId: z.string(), brandName: z.string().nullable(), genericName: z.string().nullable(), activeIngredient: z.string().nullable(), presentation: z.string(), doseUnit: z.string(), unitsPerPackage: z.union([z.string(), z.number()]).nullable(), archivedAt: z.date().nullable() }));
+const Medication = registry.register('Medication', z.object({ id: z.string(), numericId: z.string(), organizationId: z.string(), brandName: z.string().nullable(), genericName: z.string().nullable(), activeIngredient: z.string().nullable(), presentation: z.string(), doseUnit: z.string(), unitsPerPackage: z.union([z.string(), z.number()]).nullable(), archivedAt: z.date().nullable() }));
 const MedicationCreate = registry.register('MedicationCreate', medicationCreate);
 const MedicationPatch = registry.register('MedicationPatch', medicationPatch);
 const MedicationListQuery = registry.register('MedicationListQuery', medicationListQuery);
@@ -106,7 +146,7 @@ const UserListQuery = registry.register('UserListQuery', userListQuery);
 const UserCreate = registry.register('UserCreate', userCreate);
 const UserPatch = registry.register('UserPatch', userPatch);
 const OrganizationUser = registry.register('OrganizationUser', z.object({
-  id: z.string(), name: z.string(), username: z.string().nullable().optional(), email: z.string().email(),
+  id: z.string(), numericId: z.string(), name: z.string(), username: z.string().nullable().optional(), email: z.string().email(),
   phone: z.string().nullable().optional(),
   createdAt: z.date(), role: z.string(), roleId: z.string().nullable().optional(), roleName: z.string().nullable().optional(), memberSince: z.date(),
   branches: z.array(z.object({ id: z.string(), name: z.string() })),
@@ -173,7 +213,6 @@ const RoleDto = registry.register('Role', roleSchema);
 const RoleCreate = registry.register('RoleCreate', roleCreate);
 const RolePatch = registry.register('RolePatch', rolePatch);
 const RoleListQuery = registry.register('RoleListQuery', roleListQuery);
-const OptionalPaging = registry.register('OptionalPaging', optionalPaging);
 const BoardCard = registry.register('BoardCard', z.object({
   cycle_id: z.string(),
   treatment_id: z.string(),
@@ -268,6 +307,46 @@ registry.registerPath({
   responses: { 200: { description: 'Company updated', content: { 'application/json': { schema: Company } } }, 400: { description: 'Invalid request', content: { 'application/json': { schema: ErrorResponse } } }, 403: { description: 'Platform owner required', content: { 'application/json': { schema: ErrorResponse } } }, 404: { description: 'Company not found', content: { 'application/json': { schema: ErrorResponse } } }, 409: { description: 'PIN already in use', content: { 'application/json': { schema: ErrorResponse } } } },
 });
 registry.registerPath({
+  method: 'get', path: '/api/v1/companies/{id}/activities', summary: 'List CRM activities logged for a company', security: [{ cookieAuth: [] }],
+  request: { params: z.object({ id: CompanyId }), query: CompanyActivityListQuery },
+  responses: { 200: { description: 'Company activities', content: { 'application/json': { schema: z.object({ data: z.array(CompanyActivity), ...pageMeta }) } } }, 403: { description: 'Platform owner required', content: { 'application/json': { schema: ErrorResponse } } }, 404: { description: 'Company not found', content: { 'application/json': { schema: ErrorResponse } } } },
+});
+registry.registerPath({
+  method: 'post', path: '/api/v1/companies/{id}/activities', summary: 'Log a CRM activity for a company', security: [{ cookieAuth: [] }],
+  request: { params: z.object({ id: CompanyId }), body: { content: { 'application/json': { schema: CompanyActivityCreate } } } },
+  responses: { 201: { description: 'Activity created', content: { 'application/json': { schema: CompanyActivity } } }, 400: { description: 'Invalid request', content: { 'application/json': { schema: ErrorResponse } } }, 403: { description: 'Platform owner required', content: { 'application/json': { schema: ErrorResponse } } }, 404: { description: 'Company not found', content: { 'application/json': { schema: ErrorResponse } } } },
+});
+registry.registerPath({
+  method: 'patch', path: '/api/v1/companies/{id}/activities/{activityId}', summary: 'Update a company CRM activity', security: [{ cookieAuth: [] }],
+  request: { params: z.object({ id: CompanyId, activityId: z.string().min(1) }), body: { content: { 'application/json': { schema: CompanyActivityPatch } } } },
+  responses: { 200: { description: 'Activity updated', content: { 'application/json': { schema: CompanyActivity } } }, 400: { description: 'Invalid request', content: { 'application/json': { schema: ErrorResponse } } }, 403: { description: 'Platform owner required', content: { 'application/json': { schema: ErrorResponse } } }, 404: { description: 'Activity not found', content: { 'application/json': { schema: ErrorResponse } } } },
+});
+registry.registerPath({
+  method: 'get', path: '/api/v1/companies/{id}/members', summary: 'List users belonging to a company (for deal owner selection)', security: [{ cookieAuth: [] }],
+  request: { params: z.object({ id: CompanyId }) },
+  responses: { 200: { description: 'Company members', content: { 'application/json': { schema: z.object({ data: z.array(CompanyMember) }) } } }, 403: { description: 'Platform owner required', content: { 'application/json': { schema: ErrorResponse } } }, 404: { description: 'Company not found', content: { 'application/json': { schema: ErrorResponse } } } },
+});
+registry.registerPath({
+  method: 'get', path: '/api/v1/companies/{id}/medications', summary: 'List medications belonging to a company (for deal line items)', security: [{ cookieAuth: [] }],
+  request: { params: z.object({ id: CompanyId }) },
+  responses: { 200: { description: 'Company medications', content: { 'application/json': { schema: z.object({ data: z.array(Medication) }) } } }, 403: { description: 'Platform owner required', content: { 'application/json': { schema: ErrorResponse } } }, 404: { description: 'Company not found', content: { 'application/json': { schema: ErrorResponse } } } },
+});
+registry.registerPath({
+  method: 'get', path: '/api/v1/companies/{id}/deals', summary: 'List deals (ofertas) for a company', security: [{ cookieAuth: [] }],
+  request: { params: z.object({ id: CompanyId }), query: DealListQuery },
+  responses: { 200: { description: 'Company deals', content: { 'application/json': { schema: z.object({ data: z.array(Deal), ...pageMeta }) } } }, 403: { description: 'Platform owner required', content: { 'application/json': { schema: ErrorResponse } } }, 404: { description: 'Company not found', content: { 'application/json': { schema: ErrorResponse } } } },
+});
+registry.registerPath({
+  method: 'post', path: '/api/v1/companies/{id}/deals', summary: 'Create a deal (oferta) for a company', security: [{ cookieAuth: [] }],
+  request: { params: z.object({ id: CompanyId }), body: { content: { 'application/json': { schema: DealCreate } } } },
+  responses: { 201: { description: 'Deal created', content: { 'application/json': { schema: Deal } } }, 400: { description: 'Invalid request', content: { 'application/json': { schema: ErrorResponse } } }, 403: { description: 'Platform owner required', content: { 'application/json': { schema: ErrorResponse } } }, 404: { description: 'Company not found', content: { 'application/json': { schema: ErrorResponse } } } },
+});
+registry.registerPath({
+  method: 'patch', path: '/api/v1/companies/{id}/deals/{dealId}', summary: 'Update a deal (oferta)', security: [{ cookieAuth: [] }],
+  request: { params: z.object({ id: CompanyId, dealId: z.string().min(1) }), body: { content: { 'application/json': { schema: DealPatch } } } },
+  responses: { 200: { description: 'Deal updated', content: { 'application/json': { schema: Deal } } }, 400: { description: 'Invalid request', content: { 'application/json': { schema: ErrorResponse } } }, 403: { description: 'Platform owner required', content: { 'application/json': { schema: ErrorResponse } } }, 404: { description: 'Deal not found', content: { 'application/json': { schema: ErrorResponse } } } },
+});
+registry.registerPath({
   method: 'get', path: '/api/v1/users', summary: 'List login-enabled users who belong to the active organization', security: [{ cookieAuth: [] }],
   request: { query: UserListQuery },
   responses: { 200: { description: 'Organization users', content: { 'application/json': { schema: z.object({ data: z.array(OrganizationUser), nextCursor: z.string().nullable(), ...pageMeta }) } } }, 401: { description: 'Unauthenticated', content: { 'application/json': { schema: ErrorResponse } } }, 403: { description: 'Forbidden', content: { 'application/json': { schema: ErrorResponse } } } },
@@ -294,8 +373,8 @@ registry.registerPath({
 });
 
 registry.registerPath({
-  method: 'get', path: '/api/v1/branches', summary: 'List active branches', security: [{ cookieAuth: [] }],
-  request: { query: OptionalPaging },
+  method: 'get', path: '/api/v1/branches', summary: 'List branches', security: [{ cookieAuth: [] }],
+  request: { query: BranchListQuery },
   responses: { 200: { description: 'Branches', content: { 'application/json': { schema: z.object({ data: z.array(Branch), ...pageMeta }) } } }, 401: { description: 'Unauthenticated', content: { 'application/json': { schema: ErrorResponse } } }, 403: { description: 'Forbidden', content: { 'application/json': { schema: ErrorResponse } } } },
 });
 registry.registerPath({
@@ -319,9 +398,14 @@ registry.registerPath({
   responses: { 204: { description: 'Branch archived' }, 403: { description: 'Forbidden', content: { 'application/json': { schema: ErrorResponse } } }, 404: { description: 'Branch not found', content: { 'application/json': { schema: ErrorResponse } } } },
 });
 registry.registerPath({
+  method: 'post', path: '/api/v1/branches/{id}/restore', summary: 'Restore an archived branch', security: [{ cookieAuth: [] }],
+  request: { params: z.object({ id: BranchId }) },
+  responses: { 200: { description: 'Branch restored', content: { 'application/json': { schema: Branch } } }, 403: { description: 'Forbidden', content: { 'application/json': { schema: ErrorResponse } } }, 404: { description: 'Branch not found', content: { 'application/json': { schema: ErrorResponse } } } },
+});
+registry.registerPath({
   method: 'get', path: '/api/v1/patients', summary: 'Search patients within the active organization', security: [{ cookieAuth: [] }],
   request: { query: PatientListQuery },
-  responses: { 200: { description: 'Paginated patients', content: { 'application/json': { schema: z.object({ data: z.array(Patient), nextCursor: z.string().nullable(), ...pageMeta }) } } }, 403: { description: 'Forbidden', content: { 'application/json': { schema: ErrorResponse } } } },
+  responses: { 200: { description: 'Paginated patients', content: { 'application/json': { schema: z.object({ data: z.array(Patient.extend({ primaryConditionName: z.string().nullable() })), nextCursor: z.string().nullable(), ...pageMeta }) } } }, 403: { description: 'Forbidden', content: { 'application/json': { schema: ErrorResponse } } } },
 });
 registry.registerPath({
   method: 'post', path: '/api/v1/patients', summary: 'Create a patient and return potential in-organization duplicates', security: [{ cookieAuth: [] }],
@@ -384,7 +468,7 @@ const TransferPending = registry.register('TransferPending', z.object({
   completed: z.literal(false), warnings: z.array(TransferWarning),
 }));
 const TransferHistoryRow = registry.register('TransferHistoryRow', z.object({
-  id: z.string(), occurred_at: z.date(),
+  id: z.string(), numeric_id: z.string(), occurred_at: z.date(),
   from_branch: z.object({ id: z.string(), name: z.string() }),
   to_branch: z.object({ id: z.string(), name: z.string() }),
   reason: z.string(), treatments_count: z.number().int(), cycles_count: z.number().int(),
@@ -428,6 +512,7 @@ registry.registerPath({ method: 'post', path: '/api/v1/medications', summary: 'C
 registry.registerPath({ method: 'get', path: '/api/v1/medications/{id}', summary: 'Get a medication', security: [{ cookieAuth: [] }], request: { params: z.object({ id: BranchId }) }, responses: { 200: { description: 'Medication', content: { 'application/json': { schema: Medication } } }, 404: { description: 'Medication not found', content: { 'application/json': { schema: ErrorResponse } } } } });
 registry.registerPath({ method: 'patch', path: '/api/v1/medications/{id}', summary: 'Update a medication', security: [{ cookieAuth: [] }], request: { params: z.object({ id: BranchId }), body: { content: { 'application/json': { schema: MedicationPatch } } } }, responses: { 200: { description: 'Medication updated', content: { 'application/json': { schema: Medication } } }, 403: { description: 'Forbidden', content: { 'application/json': { schema: ErrorResponse } } }, 404: { description: 'Medication not found', content: { 'application/json': { schema: ErrorResponse } } } } });
 registry.registerPath({ method: 'post', path: '/api/v1/medications/{id}/archive', summary: 'Archive a medication', security: [{ cookieAuth: [] }], request: { params: z.object({ id: BranchId }) }, responses: { 200: { description: 'Medication archived', content: { 'application/json': { schema: Medication } } }, 403: { description: 'Forbidden', content: { 'application/json': { schema: ErrorResponse } } } } });
+registry.registerPath({ method: 'post', path: '/api/v1/medications/{id}/restore', summary: 'Restore an archived medication', security: [{ cookieAuth: [] }], request: { params: z.object({ id: BranchId }) }, responses: { 200: { description: 'Medication restored', content: { 'application/json': { schema: Medication } } }, 403: { description: 'Forbidden', content: { 'application/json': { schema: ErrorResponse } } } } });
 
 registry.registerPath({
   method: 'get', path: '/api/v1/treatments', summary: 'List treatments with derived coverage status', security: [{ cookieAuth: [] }],
@@ -1054,28 +1139,28 @@ registry.registerPath({
 });
 
 // --- Doctors / medical specialties / medical centers / health conditions ------------------------
-const MedicalSpecialty = registry.register('MedicalSpecialty', z.object({ id: z.string(), organizationId: z.string(), name: z.string(), description: z.string().nullable(), isActive: z.boolean(), createdAt: z.date(), updatedAt: z.date() }));
+const MedicalSpecialty = registry.register('MedicalSpecialty', z.object({ id: z.string(), numericId: z.string(), organizationId: z.string(), name: z.string(), description: z.string().nullable(), isActive: z.boolean(), createdAt: z.date(), updatedAt: z.date() }));
 const MedicalSpecialtyCreate = registry.register('MedicalSpecialtyCreate', specialtyCreate);
 const MedicalSpecialtyPatch = registry.register('MedicalSpecialtyPatch', specialtyPatch);
 const MedicalSpecialtyListQuery = registry.register('MedicalSpecialtyListQuery', specialtyListQuery);
 
 const MedicalCenter = registry.register('MedicalCenter', z.object({
-  id: z.string(), organizationId: z.string(), name: z.string(), centerType: z.enum(medicalCenterTypes),
-  rnc: z.string().nullable(), phone: z.string().nullable(), email: z.string().nullable(), address: z.string().nullable(),
-  province: z.string().nullable(), municipality: z.string().nullable(), notes: z.string().nullable(), isActive: z.boolean(),
+  id: z.string(), numericId: z.string(), organizationId: z.string(), name: z.string(), centerType: z.enum(medicalCenterTypes),
+  rnc: z.string().nullable(), phone: z.string().nullable(), email: z.string().nullable(),
+  addressDetails: z.record(z.string(), z.unknown()).nullable(), notes: z.string().nullable(), isActive: z.boolean(),
   createdAt: z.date(), updatedAt: z.date(),
 }));
 const MedicalCenterCreate = registry.register('MedicalCenterCreate', medicalCenterCreate);
 const MedicalCenterPatch = registry.register('MedicalCenterPatch', medicalCenterPatch);
 const MedicalCenterListQuery = registry.register('MedicalCenterListQuery', medicalCenterListQuery);
 
-const HealthCondition = registry.register('HealthCondition', z.object({ id: z.string(), organizationId: z.string(), name: z.string(), description: z.string().nullable(), isActive: z.boolean(), createdAt: z.date(), updatedAt: z.date() }));
+const HealthCondition = registry.register('HealthCondition', z.object({ id: z.string(), numericId: z.string(), organizationId: z.string(), name: z.string(), description: z.string().nullable(), isActive: z.boolean(), createdAt: z.date(), updatedAt: z.date() }));
 const HealthConditionCreate = registry.register('HealthConditionCreate', conditionCreate);
 const HealthConditionPatch = registry.register('HealthConditionPatch', conditionPatch);
 const HealthConditionListQuery = registry.register('HealthConditionListQuery', conditionListQuery);
 
 const Doctor = registry.register('Doctor', z.object({
-  id: z.string(), organizationId: z.string(), firstName: z.string(), lastName: z.string(),
+  id: z.string(), numericId: z.string(), organizationId: z.string(), firstName: z.string(), lastName: z.string(),
   licenseNumber: z.string().nullable(), phone: z.string().nullable(), email: z.string().nullable(),
   notes: z.string().nullable(), isActive: z.boolean(), createdAt: z.date(), updatedAt: z.date(),
 }));
@@ -1102,7 +1187,7 @@ const PatientDoctorPatch = registry.register('PatientDoctorPatch', patientDoctor
 const PatientConditionLink = registry.register('PatientConditionLink', z.object({
   id: z.string(), organizationId: z.string(), patientId: z.string(), healthConditionId: z.string(),
   status: z.enum(patientConditionStatuses), diagnosedOn: z.date().nullable(), notes: z.string().nullable(),
-  isActive: z.boolean(), recordedBy: z.string(), createdAt: z.date(), updatedAt: z.date(),
+  isPrimary: z.boolean(), isActive: z.boolean(), recordedBy: z.string(), createdAt: z.date(), updatedAt: z.date(),
 }));
 const PatientConditionInput = registry.register('PatientConditionInput', patientConditionInput);
 const PatientConditionPatch = registry.register('PatientConditionPatch', patientConditionPatch);
@@ -1133,7 +1218,7 @@ registry.registerPath({ method: 'delete', path: '/api/v1/doctors/{id}/specialtie
 registry.registerPath({ method: 'post', path: '/api/v1/doctors/{id}/medical-centers', summary: 'Link a medical center to a doctor', security: cookie, request: { params: idParams, body: { content: { 'application/json': { schema: DoctorMedicalCenterInput } } } }, responses: { 201: { description: 'Medical center linked', content: { 'application/json': { schema: DoctorMedicalCenterLink } } }, 404: err('Doctor or medical center not found'), 409: err('Medical center already linked') } });
 registry.registerPath({ method: 'patch', path: '/api/v1/doctors/{id}/medical-centers/{medicalCenterId}', summary: "Update a doctor's medical center link (office, position, schedule, or deactivate)", security: cookie, request: { params: z.object({ id: BranchId, medicalCenterId: z.string() }), body: { content: { 'application/json': { schema: DoctorMedicalCenterPatch } } } }, responses: { 200: { description: 'Link updated', content: { 'application/json': { schema: DoctorMedicalCenterLink } } }, 404: err('Active link not found'), 409: err('Medical center already linked') } });
 
-registry.registerPath({ method: 'get', path: '/api/v1/patients/{id}/doctors', summary: "List a patient's active doctors", security: cookie, request: { params: idParams }, responses: { 200: { description: 'Doctor links', content: { 'application/json': { schema: z.object({ data: z.array(PatientDoctorLink.extend({ doctor: Doctor.pick({ id: true, firstName: true, lastName: true, phone: true, licenseNumber: true }) })) }) } } }, 404: err('Patient not found') } });
+registry.registerPath({ method: 'get', path: '/api/v1/patients/{id}/doctors', summary: "List a patient's active doctors", security: cookie, request: { params: idParams }, responses: { 200: { description: 'Doctor links', content: { 'application/json': { schema: z.object({ data: z.array(PatientDoctorLink.extend({ doctor: Doctor.pick({ id: true, firstName: true, lastName: true, phone: true, licenseNumber: true }).extend({ specialties: z.array(z.object({ specialty: MedicalSpecialty.pick({ id: true, name: true }) })) }) })) }) } } }, 404: err('Patient not found') } });
 registry.registerPath({ method: 'post', path: '/api/v1/patients/{id}/doctors', summary: "Associate a doctor with a patient; promoting isPrimary demotes any other active primary doctor", security: cookie, request: { params: idParams, body: { content: { 'application/json': { schema: PatientDoctorInput } } } }, responses: { 201: { description: 'Doctor linked', content: { 'application/json': { schema: PatientDoctorLink } } }, 404: err('Patient or doctor not found'), 409: err('Doctor already linked') } });
 registry.registerPath({ method: 'patch', path: '/api/v1/patients/{id}/doctors/{doctorId}', summary: "Update a patient's active doctor link (notes, isPrimary, or deactivate preserving history)", security: cookie, request: { params: z.object({ id: BranchId, doctorId: z.string() }), body: { content: { 'application/json': { schema: PatientDoctorPatch } } } }, responses: { 200: { description: 'Link updated', content: { 'application/json': { schema: PatientDoctorLink } } }, 404: err('Active link not found'), 409: err('Doctor already linked') } });
 registry.registerPath({ method: 'get', path: '/api/v1/patients/{id}/conditions', summary: "List a patient's active health conditions", security: cookie, request: { params: idParams }, responses: { 200: { description: 'Condition links', content: { 'application/json': { schema: z.object({ data: z.array(PatientConditionLink.extend({ condition: HealthCondition.pick({ id: true, name: true }) })) }) } } }, 404: err('Patient not found') } });

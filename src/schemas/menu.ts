@@ -46,6 +46,6 @@ export const menuListQuery = z.object({
 });
 
 export const menuItemSchema = z.object({
-  id: z.string(), key: z.string(), label: z.string(), path: z.string().nullable(), icon: z.string(),
+  id: z.string(), numericId: z.string(), key: z.string(), label: z.string(), path: z.string().nullable(), icon: z.string(),
   order: z.number().int(), isActive: z.boolean(), permission: z.string().nullable(), parentId: z.string().nullable(),
 });

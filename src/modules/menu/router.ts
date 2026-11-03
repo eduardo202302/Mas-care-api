@@ -15,7 +15,7 @@ export const menuRouter = Router();
 menuRouter.use(resolveTenant);
 
 const select = {
-  id: true, key: true, label: true, path: true, icon: true, order: true, isActive: true, permission: true, parentId: true,
+  id: true, numericId: true, key: true, label: true, path: true, icon: true, order: true, isActive: true, permission: true, parentId: true,
 } satisfies Prisma.MenuItemSelect;
 const orderBy = [{ order: 'asc' }, { label: 'asc' }, { id: 'asc' }] satisfies Prisma.MenuItemOrderByWithRelationInput[];
 

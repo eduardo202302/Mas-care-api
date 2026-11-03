@@ -14,7 +14,11 @@ model Branch {
   name             String
   labelColor       String                @default("#CDE9EC") @map("label_color")
   phone            String?
-  address          String?
+  addressDetails   Json?                 @map("address_details")
+  description      String?
+  managerName      String?               @map("manager_name")
+  managerPhone     String?               @map("manager_phone")
+  managerEmail     String?               @map("manager_email")
   openingHours     Json?                 @map("opening_hours")
   archivedAt       DateTime?             @map("archived_at")
   createdAt        DateTime              @default(now()) @map("created_at")
@@ -44,6 +48,7 @@ model BranchMember {
   userId         String @map("user_id")
   branch         Branch @relation(fields: [organizationId, branchId], references: [organizationId, id], onDelete: Cascade)
   user           User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  numericId      BigInt @unique @default(dbgenerated("nextval('global_numeric_id_seq'::regclass)")) @map("numeric_id")
 
   @@id([organizationId, branchId, userId])
   @@index([organizationId])
@@ -100,8 +105,7 @@ model Patient {
   phone                  String?
   phoneHasWhatsapp       Boolean             @default(false) @map("phone_has_whatsapp")
   email                  String?
-  address                String?
-  zone                   String?
+  addressDetails         Json?               @map("address_details")
   preferredChannel       ContactChannel      @default(whatsapp) @map("preferred_channel")
   reminderConsent        Boolean             @default(false) @map("reminder_consent")
   reminderConsentAt      DateTime?           @map("reminder_consent_at")
@@ -130,6 +134,7 @@ model Patient {
   transfers              PatientTransfer[]
   doctors                PatientDoctor[]
   conditions             PatientCondition[]
+  deals                  Deal[]
   numericId              BigInt              @unique @default(dbgenerated("nextval('global_numeric_id_seq'::regclass)")) @map("numeric_id")
 
   @@unique([organizationId, id])
@@ -188,6 +193,7 @@ model PatientCaregiver {
   fullName       String  @map("full_name")
   phone          String
   relationship   String
+  addressDetails Json?   @map("address_details")
   isPrimary      Boolean @default(false) @map("is_primary")
   patient        Patient @relation(fields: [organizationId, patientId], references: [organizationId, id], onDelete: Cascade)
   numericId      BigInt  @unique @default(dbgenerated("nextval('global_numeric_id_seq'::regclass)")) @map("numeric_id")
@@ -297,6 +303,7 @@ model DoctorSpecialty {
   createdAt      DateTime         @default(now()) @map("created_at")
   doctor         Doctor           @relation(fields: [organizationId, doctorId], references: [organizationId, id], onDelete: Cascade)
   specialty      MedicalSpecialty @relation(fields: [organizationId, specialtyId], references: [organizationId, id], onDelete: Cascade)
+  numericId      BigInt           @unique @default(dbgenerated("nextval('global_numeric_id_seq'::regclass)")) @map("numeric_id")
 
   @@id([organizationId, doctorId, specialtyId])
   @@index([organizationId, specialtyId])
@@ -321,9 +328,7 @@ model MedicalCenter {
   rnc            String?
   phone          String?
   email          String?
-  address        String?               @db.Text
-  province       String?
-  municipality   String?
+  addressDetails Json?                 @map("address_details")
   notes          String?               @db.Text
   isActive       Boolean               @default(true) @map("is_active")
   createdAt      DateTime              @default(now()) @map("created_at")
@@ -440,6 +445,7 @@ model PatientCondition {
   status            PatientConditionStatus @default(active)
   diagnosedOn       DateTime?              @map("diagnosed_on") @db.Date
   notes             String?                @db.Text
+  isPrimary         Boolean                @default(false) @map("is_primary")
   isActive          Boolean                @default(true) @map("is_active")
   recordedBy        String                 @map("recorded_by")
   createdAt         DateTime               @default(now()) @map("created_at")
@@ -496,6 +502,13 @@ enum TaskType {
   renew_prescription
   prepare_delivery
   other
+}
+
+enum TaskPriority {
+  low
+  medium
+  high
+  urgent
 }
 
 enum TaskStatus {
@@ -712,6 +725,7 @@ model MedicationStockMark {
   branch         Branch     @relation(fields: [organizationId, branchId], references: [organizationId, id], onDelete: Cascade)
   medication     Medication @relation(fields: [organizationId, medicationId], references: [organizationId, id], onDelete: Cascade)
   reviewer       User       @relation("StockMarkReviewer", fields: [reviewedBy], references: [id], onDelete: Restrict)
+  numericId      BigInt     @unique @default(dbgenerated("nextval('global_numeric_id_seq'::regclass)")) @map("numeric_id")
 
   @@id([branchId, medicationId])
   @@unique([organizationId, branchId, medicationId])
@@ -878,6 +892,105 @@ model Activity {
   @@map("activities")
 }
 
+enum CompanyActivityType {
+  note
+  email
+  call
+  meeting
+  task
+}
+
+// CRM-style activity log for the platform owner's company record (distinct from
+// the patient-care `Activity` model): notes/calls/emails/meetings/tasks logged
+// against the company itself rather than a specific patient.
+model CompanyActivity {
+  id             String              @id @default(cuid())
+  organizationId String              @map("organization_id")
+  type           CompanyActivityType
+  title          String?
+  body           String?             @db.Text
+  contactName    String?             @map("contact_name")
+  dueAt          DateTime?           @map("due_at")
+  completedAt    DateTime?           @map("completed_at")
+  authorId       String              @map("author_id")
+  occurredAt     DateTime            @default(now()) @map("occurred_at")
+  createdAt      DateTime            @default(now()) @map("created_at")
+  updatedAt      DateTime            @updatedAt @map("updated_at")
+  organization   Organization        @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  author         User                @relation(fields: [authorId], references: [id], onDelete: Restrict)
+  numericId      BigInt              @unique @default(dbgenerated("nextval('global_numeric_id_seq'::regclass)")) @map("numeric_id")
+
+  @@unique([organizationId, id])
+  @@index([organizationId, type, occurredAt])
+  @@map("company_activities")
+}
+
+enum DealPipeline {
+  sales
+}
+
+enum DealStage {
+  appointment_scheduled
+  qualified_to_buy
+  presentation_scheduled
+  decision_maker_bought_in
+  contract_sent
+  closed_won
+  closed_lost
+}
+
+enum DealType {
+  new_business
+  existing_business
+}
+
+enum DealPriority {
+  low
+  medium
+  high
+}
+
+model Deal {
+  id             String       @id @default(cuid())
+  organizationId String       @map("organization_id")
+  name           String
+  pipeline       DealPipeline @default(sales)
+  stage          DealStage    @default(appointment_scheduled)
+  dealType       DealType     @default(new_business) @map("deal_type")
+  priority       DealPriority @default(medium)
+  amount         Decimal?     @db.Decimal(14, 2)
+  closeDate      DateTime?    @map("close_date") @db.Date
+  ownerUserId    String?      @map("owner_user_id")
+  contactId      String?      @map("contact_id")
+  createdAt      DateTime     @default(now()) @map("created_at")
+  updatedAt      DateTime     @updatedAt @map("updated_at")
+  organization   Organization   @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  owner          User?          @relation(fields: [ownerUserId], references: [id], onDelete: SetNull)
+  contact        Patient?       @relation(fields: [contactId], references: [id], onDelete: SetNull)
+  lineItems      DealLineItem[]
+  numericId      BigInt       @unique @default(dbgenerated("nextval('global_numeric_id_seq'::regclass)")) @map("numeric_id")
+
+  @@unique([organizationId, id])
+  @@index([organizationId, createdAt])
+  @@map("deals")
+}
+
+model DealLineItem {
+  id             String   @id @default(cuid())
+  organizationId String   @map("organization_id")
+  dealId         String   @map("deal_id")
+  name           String
+  quantity       Decimal  @default(1) @db.Decimal(10, 2)
+  unitPrice      Decimal  @map("unit_price") @db.Decimal(14, 2)
+  createdAt      DateTime @default(now()) @map("created_at")
+  deal           Deal     @relation(fields: [organizationId, dealId], references: [organizationId, id], onDelete: Cascade)
+  numericId      BigInt   @unique @default(dbgenerated("nextval('global_numeric_id_seq'::regclass)")) @map("numeric_id")
+
+  @@unique([organizationId, id])
+  @@index([organizationId, dealId])
+  @@map("deal_line_items")
+}
+
 model SavedView {
   id             String       @id @default(cuid())
   organizationId String       @map("organization_id")
@@ -901,31 +1014,33 @@ model SavedView {
 }
 
 model Task {
-  id             String       @id @default(cuid())
-  organizationId String       @map("organization_id")
-  branchId       String?      @map("branch_id")
-  type           TaskType
-  title          String
-  description    String?      @db.Text
-  status         TaskStatus   @default(open)
-  dueAt          DateTime?    @map("due_at")
-  assignedTo     String?      @map("assigned_to")
-  patientId      String?      @map("patient_id")
-  treatmentId    String?      @map("treatment_id")
-  cycleId        String?      @map("cycle_id")
-  autoGenerated  Boolean      @default(false) @map("auto_generated")
-  completedAt    DateTime?    @map("completed_at")
-  completedBy    String?      @map("completed_by")
-  createdAt      DateTime     @default(now()) @map("created_at")
-  updatedAt      DateTime     @updatedAt @map("updated_at")
-  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  branch         Branch?      @relation(fields: [branchId], references: [id], onDelete: SetNull)
-  patient        Patient?     @relation(fields: [patientId], references: [id], onDelete: Cascade)
-  treatment      Treatment?   @relation(fields: [treatmentId], references: [id], onDelete: SetNull)
-  cycle          RefillCycle? @relation(fields: [cycleId], references: [id], onDelete: SetNull)
-  assignee       User?        @relation("TaskAssignee", fields: [assignedTo], references: [id], onDelete: SetNull)
-  completer      User?        @relation("TaskCompletedBy", fields: [completedBy], references: [id], onDelete: SetNull)
-  numericId      BigInt       @unique @default(dbgenerated("nextval('global_numeric_id_seq'::regclass)")) @map("numeric_id")
+  id                    String       @id @default(cuid())
+  organizationId        String       @map("organization_id")
+  branchId              String?      @map("branch_id")
+  type                  TaskType
+  title                 String
+  description           String?      @db.Text
+  status                TaskStatus   @default(open)
+  priority              TaskPriority @default(medium)
+  reminderMinutesBefore Int?         @map("reminder_minutes_before")
+  dueAt                 DateTime?    @map("due_at")
+  assignedTo            String?      @map("assigned_to")
+  patientId             String?      @map("patient_id")
+  treatmentId           String?      @map("treatment_id")
+  cycleId               String?      @map("cycle_id")
+  autoGenerated         Boolean      @default(false) @map("auto_generated")
+  completedAt           DateTime?    @map("completed_at")
+  completedBy           String?      @map("completed_by")
+  createdAt             DateTime     @default(now()) @map("created_at")
+  updatedAt             DateTime     @updatedAt @map("updated_at")
+  organization          Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  branch                Branch?      @relation(fields: [branchId], references: [id], onDelete: SetNull)
+  patient               Patient?     @relation(fields: [patientId], references: [id], onDelete: Cascade)
+  treatment             Treatment?   @relation(fields: [treatmentId], references: [id], onDelete: SetNull)
+  cycle                 RefillCycle? @relation(fields: [cycleId], references: [id], onDelete: SetNull)
+  assignee              User?        @relation("TaskAssignee", fields: [assignedTo], references: [id], onDelete: SetNull)
+  completer             User?        @relation("TaskCompletedBy", fields: [completedBy], references: [id], onDelete: SetNull)
+  numericId             BigInt       @unique @default(dbgenerated("nextval('global_numeric_id_seq'::regclass)")) @map("numeric_id")
 
   @@unique([organizationId, id])
   @@index([organizationId, branchId, status, dueAt])
@@ -1010,6 +1125,8 @@ model User {
   responsibleTreatments Treatment[]           @relation("TreatmentResponsible")
   recordedDeliveries    Delivery[]            @relation("DeliveryRecordedBy")
   activities            Activity[]
+  companyActivities     CompanyActivity[]
+  ownedDeals            Deal[]
   savedViews            SavedView[]
   assignedTasks         Task[]                @relation("TaskAssignee")
   completedTasks        Task[]                @relation("TaskCompletedBy")
@@ -1113,11 +1230,16 @@ model Organization {
   city               String?
   state              String?
   postalCode         String?             @map("postal_code")
+  address            String?
+  sector             String?
+  latitude           String?
+  longitude          String?
   employeeCount      Int?                @map("employee_count")
   annualRevenue      Decimal?            @map("annual_revenue") @db.Decimal(18, 2)
   timezone           String?
   description        String?
   linkedinUrl        String?             @map("linkedin_url")
+  googleMapsApiKey   String?             @map("google_maps_api_key")
   updatedAt          DateTime            @default(now()) @updatedAt @map("updated_at")
   members            Member[]
   invitations        Invitation[]
@@ -1149,6 +1271,8 @@ model Organization {
   medicalSpecialties MedicalSpecialty[]
   medicalCenters     MedicalCenter[]
   healthConditions   HealthCondition[]
+  companyActivities  CompanyActivity[]
+  deals              Deal[]
   numericId          BigInt              @unique @default(dbgenerated("nextval('global_numeric_id_seq'::regclass)")) @map("numeric_id")
 
   @@unique([slug])
@@ -1245,6 +1369,7 @@ model RoleMenuItem {
   canDelete      Boolean  @default(false) @map("can_delete")
   role           Role     @relation(fields: [organizationId, roleId], references: [organizationId, id], onDelete: Cascade)
   menuItem       MenuItem @relation(fields: [menuItemId], references: [id], onDelete: Cascade)
+  numericId      BigInt   @unique @default(dbgenerated("nextval('global_numeric_id_seq'::regclass)")) @map("numeric_id")
 
   @@id([roleId, menuItemId])
   @@index([organizationId])
@@ -1465,6 +1590,7 @@ model JobRun {
   lastStatus     String?   @map("last_status")
   lastError      String?   @map("last_error")
   lastFailureAt  DateTime? @map("last_failure_at")
+  numericId      BigInt    @unique @default(dbgenerated("nextval('global_numeric_id_seq'::regclass)")) @map("numeric_id")
 
   @@map("job_runs")
 }

@@ -39,9 +39,9 @@ const requirePermission = (role: Parameters<typeof puede>[0], action: Parameters
 type Spec<F extends string> = { fields: readonly F[]; aliases: Record<string, F>; required: F };
 
 const patientSpec: Spec<
-  'fullName' | 'documentId' | 'birthDate' | 'phone' | 'phoneHasWhatsapp' | 'email' | 'address' | 'zone' | 'preferredChannel' | 'careNotes' | 'primaryBranchId'
+  'fullName' | 'documentId' | 'birthDate' | 'phone' | 'phoneHasWhatsapp' | 'email' | 'address' | 'region' | 'city' | 'sector' | 'preferredChannel' | 'careNotes' | 'primaryBranchId'
 > = {
-  fields: ['fullName', 'documentId', 'birthDate', 'phone', 'phoneHasWhatsapp', 'email', 'address', 'zone', 'preferredChannel', 'careNotes', 'primaryBranchId'],
+  fields: ['fullName', 'documentId', 'birthDate', 'phone', 'phoneHasWhatsapp', 'email', 'address', 'region', 'city', 'sector', 'preferredChannel', 'careNotes', 'primaryBranchId'],
   required: 'fullName',
   aliases: {
     fullname: 'fullName', nombre: 'fullName', nombrecompleto: 'fullName',
@@ -51,7 +51,9 @@ const patientSpec: Spec<
     phonehaswhatsapp: 'phoneHasWhatsapp', whatsapp: 'phoneHasWhatsapp', tienewhatsapp: 'phoneHasWhatsapp',
     email: 'email', correo: 'email', correoelectronico: 'email',
     address: 'address', direccion: 'address',
-    zone: 'zone', zona: 'zone', barrio: 'zone',
+    region: 'region', provincia: 'region',
+    city: 'city', ciudad: 'city', municipio: 'city',
+    sector: 'sector', zona: 'sector', barrio: 'sector',
     preferredchannel: 'preferredChannel', canalpreferido: 'preferredChannel',
     carenotes: 'careNotes', notas: 'careNotes', notasdecuidado: 'careNotes',
     primarybranchid: 'primaryBranchId', branchid: 'primaryBranchId', sucursal: 'primaryBranchId',
@@ -224,8 +226,14 @@ async function evaluatePatients(tx: Tx, table: Table, mapping: Record<string, st
       ...(phone ? { phone } : {}),
       ...(whatsapp ? { phoneHasWhatsapp: parseBoolean(whatsapp) } : {}),
       ...(cell(row, 'email') ? { email: cell(row, 'email') } : {}),
-      ...(cell(row, 'address') ? { address: cell(row, 'address') } : {}),
-      ...(cell(row, 'zone') ? { zone: cell(row, 'zone') } : {}),
+      ...(cell(row, 'address') || cell(row, 'region') || cell(row, 'city') || cell(row, 'sector') ? {
+        addressDetails: {
+          ...(cell(row, 'address') ? { address: cell(row, 'address') } : {}),
+          ...(cell(row, 'region') ? { region: cell(row, 'region') } : {}),
+          ...(cell(row, 'city') ? { city: cell(row, 'city') } : {}),
+          ...(cell(row, 'sector') ? { sector: cell(row, 'sector') } : {}),
+        },
+      } : {}),
       ...(cell(row, 'preferredChannel') ? { preferredChannel: normalizeChannel(cell(row, 'preferredChannel')) } : {}),
       ...(cell(row, 'careNotes') ? { careNotes: cell(row, 'careNotes') } : {}),
     });
@@ -462,8 +470,7 @@ const commitHandler = (entity: Entity): RequestHandler => async (req, res) => {
             phone: p.phone ?? null,
             phoneHasWhatsapp: p.phoneHasWhatsapp ?? false,
             email: p.email ?? null,
-            address: p.address ?? null,
-            zone: p.zone ?? null,
+            addressDetails: (p.addressDetails ?? null) as Prisma.InputJsonValue | null,
             preferredChannel: p.preferredChannel ?? 'whatsapp',
             careNotes: p.careNotes ?? null,
             customValues: (p.customValues ?? {}) as Prisma.InputJsonObject,

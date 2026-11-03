@@ -3,6 +3,7 @@ import { pagingFields } from '../infra/pagination.js';
 
 export const taskTypes = ['call', 'renew_prescription', 'prepare_delivery', 'other'] as const;
 export const taskStatuses = ['open', 'done', 'cancelled'] as const;
+export const taskPriorities = ['low', 'medium', 'high', 'urgent'] as const;
 export const taskFilters = ['all', 'today', 'overdue', 'upcoming'] as const;
 
 const taskFields = {
@@ -10,6 +11,8 @@ const taskFields = {
   title: z.string().trim().min(1).max(200),
   description: z.string().trim().max(5000).nullable().optional(),
   due_at: z.coerce.date().nullable().optional(),
+  priority: z.enum(taskPriorities).optional(),
+  reminder_minutes_before: z.coerce.number().int().min(0).nullable().optional(),
   assigned_to: z.string().min(1).nullable().optional(),
   branch_id: z.string().min(1).nullable().optional(),
   patient_id: z.string().min(1).nullable().optional(),

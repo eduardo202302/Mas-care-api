@@ -3,6 +3,15 @@ import { pagingFields } from '../infra/pagination.js';
 
 export const contactChannel = z.enum(['whatsapp', 'call', 'sms', 'telegram']);
 const optionalText = (max: number) => z.string().trim().max(max).nullable().optional();
+// Passthrough: new address fields are accepted without a schema change or migration.
+const patientAddressDetails = z.object({
+  address: z.string().trim().max(500).optional(),
+  region: z.string().trim().max(120).optional(),
+  city: z.string().trim().max(120).optional(),
+  sector: z.string().trim().max(120).optional(),
+  latitude: z.coerce.number().min(-90).max(90).optional(),
+  longitude: z.coerce.number().min(-180).max(180).optional(),
+}).partial().passthrough();
 const patientFields = {
   primaryBranchId: z.string().min(1),
   fullName: z.string().trim().min(1).max(160),
@@ -11,8 +20,7 @@ const patientFields = {
   phone: optionalText(40),
   phoneHasWhatsapp: z.boolean().optional(),
   email: z.string().trim().email().max(254).nullable().optional(),
-  address: optionalText(500),
-  zone: optionalText(120),
+  addressDetails: patientAddressDetails.nullable().optional(),
   preferredChannel: contactChannel.optional(),
   careNotes: z.string().trim().max(5000).nullable().optional(),
   responsibleUserId: z.string().min(1).nullable().optional(),
@@ -59,6 +67,7 @@ export const caregiverInput = z.object({
   fullName: z.string().trim().min(1).max(160),
   phone: z.string().trim().min(1).max(40),
   relationship: z.string().trim().min(1).max(80),
+  addressDetails: patientAddressDetails.nullable().optional(),
   isPrimary: z.boolean().default(false),
 }).strict();
 export const caregiverPatch = caregiverInput.partial().strict()
@@ -89,11 +98,13 @@ export const patientConditionInput = z.object({
   status: z.enum(patientConditionStatuses).default('active'),
   diagnosedOn: z.string().date().nullable().optional(),
   notes: z.string().trim().max(2000).nullable().optional(),
+  isPrimary: z.boolean().default(false),
 }).strict();
 export const patientConditionPatch = z.object({
   status: z.enum(patientConditionStatuses).optional(),
   diagnosedOn: z.string().date().nullable().optional(),
   notes: z.string().trim().max(2000).nullable().optional(),
+  isPrimary: z.boolean().optional(),
   isActive: z.boolean().optional(),
 }).strict().refine((value) => Object.keys(value).length > 0, 'Proporciona al menos un campo para actualizar');
 export const patientConditionParams = patientParams.extend({ conditionId: z.string().min(1) });

@@ -82,19 +82,92 @@ async function seedOrganization(code: 'a' | 'b', pin: string) {
         });
       }
     }
+    const specialties = [
+      'Medicina General', 'Cardiología', 'Pediatría', 'Ginecología y Obstetricia', 'Dermatología',
+      'Neurología', 'Endocrinología', 'Gastroenterología', 'Nefrología', 'Neumología',
+    ];
+    for (const name of specialties) {
+      const specialty = await tx.medicalSpecialty.findFirst({ where: { organizationId, name } });
+      if (!specialty) await tx.medicalSpecialty.create({ data: { organizationId, name } });
+    }
+    const healthConditions = [
+      'Hipertensión arterial', 'Insuficiencia cardíaca', 'Arritmia cardíaca', 'Cardiopatía isquémica', 'Hipercolesterolemia',
+      'Diabetes mellitus tipo 1', 'Diabetes mellitus tipo 2', 'Hipotiroidismo', 'Hipertiroidismo', 'Obesidad',
+      'Asma', 'Enfermedad pulmonar obstructiva crónica (EPOC)', 'Rinitis alérgica', 'Bronquitis crónica', 'Apnea del sueño',
+    ];
+    for (const name of healthConditions) {
+      const condition = await tx.healthCondition.findFirst({ where: { organizationId, name } });
+      if (!condition) await tx.healthCondition.create({ data: { organizationId, name } });
+    }
     const examples = [
-      { genericName: 'Paracetamol', activeIngredient: 'Paracetamol', presentation: '500 mg tabletas', unitsPerPackage: 20 },
-      { genericName: 'Ibuprofeno', activeIngredient: 'Ibuprofeno', presentation: '400 mg comprimidos', unitsPerPackage: 20 },
-      { genericName: 'Amoxicilina', activeIngredient: 'Amoxicilina', presentation: '500 mg cápsulas', unitsPerPackage: 21 },
-      { genericName: 'Loratadina', activeIngredient: 'Loratadina', presentation: '10 mg tabletas', unitsPerPackage: 10 },
+      // Medicina General
+      { genericName: 'Paracetamol', activeIngredient: 'Paracetamol', presentation: '500 mg tabletas', doseUnit: 'tablet', unitsPerPackage: 20 },
+      { genericName: 'Ibuprofeno', activeIngredient: 'Ibuprofeno', presentation: '400 mg comprimidos', doseUnit: 'tablet', unitsPerPackage: 20 },
+      { genericName: 'Amoxicilina', activeIngredient: 'Amoxicilina', presentation: '500 mg cápsulas', doseUnit: 'tablet', unitsPerPackage: 21 },
+      { genericName: 'Loratadina', activeIngredient: 'Loratadina', presentation: '10 mg tabletas', doseUnit: 'tablet', unitsPerPackage: 10 },
+      { genericName: 'Omeprazol', activeIngredient: 'Omeprazol', presentation: '20 mg cápsulas', doseUnit: 'tablet', unitsPerPackage: 14 },
+      // Cardiología
+      { genericName: 'Losartán', activeIngredient: 'Losartán potásico', presentation: '50 mg tabletas', doseUnit: 'tablet', unitsPerPackage: 30 },
+      { genericName: 'Enalapril', activeIngredient: 'Enalapril', presentation: '10 mg tabletas', doseUnit: 'tablet', unitsPerPackage: 30 },
+      { genericName: 'Amlodipino', activeIngredient: 'Amlodipino', presentation: '5 mg tabletas', doseUnit: 'tablet', unitsPerPackage: 30 },
+      { genericName: 'Atorvastatina', activeIngredient: 'Atorvastatina', presentation: '20 mg tabletas', doseUnit: 'tablet', unitsPerPackage: 30 },
+      { genericName: 'Bisoprolol', activeIngredient: 'Bisoprolol', presentation: '5 mg tabletas', doseUnit: 'tablet', unitsPerPackage: 30 },
+      // Pediatría
+      { genericName: 'Paracetamol pediátrico', activeIngredient: 'Paracetamol', presentation: '160 mg/5 mL jarabe', doseUnit: 'ml', unitsPerPackage: 90 },
+      { genericName: 'Ibuprofeno pediátrico', activeIngredient: 'Ibuprofeno', presentation: '100 mg/5 mL suspensión', doseUnit: 'ml', unitsPerPackage: 90 },
+      { genericName: 'Amoxicilina suspensión', activeIngredient: 'Amoxicilina', presentation: '250 mg/5 mL suspensión', doseUnit: 'ml', unitsPerPackage: 100 },
+      { genericName: 'Loratadina jarabe', activeIngredient: 'Loratadina', presentation: '5 mg/5 mL jarabe', doseUnit: 'ml', unitsPerPackage: 60 },
+      { genericName: 'Sales de rehidratación oral', activeIngredient: 'Sales de rehidratación oral', presentation: 'sobres 20.5 g', doseUnit: 'sobre', unitsPerPackage: 10 },
+      // Ginecología y Obstetricia
+      { genericName: 'Ácido fólico', activeIngredient: 'Ácido fólico', presentation: '5 mg tabletas', doseUnit: 'tablet', unitsPerPackage: 30 },
+      { genericName: 'Sulfato ferroso', activeIngredient: 'Sulfato ferroso', presentation: '300 mg tabletas', doseUnit: 'tablet', unitsPerPackage: 30 },
+      { genericName: 'Progesterona', activeIngredient: 'Progesterona micronizada', presentation: '200 mg cápsulas', doseUnit: 'tablet', unitsPerPackage: 14 },
+      { genericName: 'Clotrimazol', activeIngredient: 'Clotrimazol', presentation: '500 mg óvulos vaginales', doseUnit: 'ovulo', unitsPerPackage: 1 },
+      { genericName: 'Metronidazol', activeIngredient: 'Metronidazol', presentation: '500 mg tabletas', doseUnit: 'tablet', unitsPerPackage: 20 },
+      // Dermatología
+      { genericName: 'Hidrocortisona tópica', activeIngredient: 'Hidrocortisona', presentation: '1% crema', doseUnit: 'aplicacion', unitsPerPackage: 1 },
+      { genericName: 'Clotrimazol crema', activeIngredient: 'Clotrimazol', presentation: '1% crema', doseUnit: 'aplicacion', unitsPerPackage: 1 },
+      { genericName: 'Mupirocina', activeIngredient: 'Mupirocina', presentation: '2% pomada', doseUnit: 'aplicacion', unitsPerPackage: 1 },
+      { genericName: 'Terbinafina', activeIngredient: 'Terbinafina', presentation: '1% crema', doseUnit: 'aplicacion', unitsPerPackage: 1 },
+      { genericName: 'Adapaleno', activeIngredient: 'Adapaleno', presentation: '0.1% gel', doseUnit: 'aplicacion', unitsPerPackage: 1 },
+      // Neurología
+      { genericName: 'Pregabalina', activeIngredient: 'Pregabalina', presentation: '75 mg cápsulas', doseUnit: 'tablet', unitsPerPackage: 28 },
+      { genericName: 'Levetiracetam', activeIngredient: 'Levetiracetam', presentation: '500 mg tabletas', doseUnit: 'tablet', unitsPerPackage: 30 },
+      { genericName: 'Carbamazepina', activeIngredient: 'Carbamazepina', presentation: '200 mg tabletas', doseUnit: 'tablet', unitsPerPackage: 30 },
+      { genericName: 'Sumatriptán', activeIngredient: 'Sumatriptán', presentation: '50 mg tabletas', doseUnit: 'tablet', unitsPerPackage: 4 },
+      { genericName: 'Topiramato', activeIngredient: 'Topiramato', presentation: '25 mg tabletas', doseUnit: 'tablet', unitsPerPackage: 30 },
+      // Endocrinología
+      { genericName: 'Metformina', activeIngredient: 'Metformina', presentation: '850 mg tabletas', doseUnit: 'tablet', unitsPerPackage: 30 },
+      { genericName: 'Levotiroxina', activeIngredient: 'Levotiroxina', presentation: '100 mcg tabletas', doseUnit: 'tablet', unitsPerPackage: 30 },
+      { genericName: 'Insulina glargina', activeIngredient: 'Insulina glargina', presentation: '100 UI/mL solución inyectable', doseUnit: 'ml', unitsPerPackage: 3 },
+      { genericName: 'Sitagliptina', activeIngredient: 'Sitagliptina', presentation: '100 mg tabletas', doseUnit: 'tablet', unitsPerPackage: 28 },
+      { genericName: 'Empagliflozina', activeIngredient: 'Empagliflozina', presentation: '10 mg tabletas', doseUnit: 'tablet', unitsPerPackage: 30 },
+      // Gastroenterología
+      { genericName: 'Omeprazol', activeIngredient: 'Omeprazol', presentation: '40 mg cápsulas', doseUnit: 'tablet', unitsPerPackage: 14 },
+      { genericName: 'Pantoprazol', activeIngredient: 'Pantoprazol', presentation: '40 mg tabletas', doseUnit: 'tablet', unitsPerPackage: 14 },
+      { genericName: 'Lactulosa', activeIngredient: 'Lactulosa', presentation: '10 g/15 mL solución oral', doseUnit: 'ml', unitsPerPackage: 200 },
+      { genericName: 'Mesalazina', activeIngredient: 'Mesalazina', presentation: '500 mg tabletas', doseUnit: 'tablet', unitsPerPackage: 60 },
+      { genericName: 'Domperidona', activeIngredient: 'Domperidona', presentation: '10 mg tabletas', doseUnit: 'tablet', unitsPerPackage: 30 },
+      // Nefrología
+      { genericName: 'Furosemida', activeIngredient: 'Furosemida', presentation: '40 mg tabletas', doseUnit: 'tablet', unitsPerPackage: 30 },
+      { genericName: 'Eritropoyetina', activeIngredient: 'Epoetina alfa', presentation: '4000 UI solución inyectable', doseUnit: 'ampolla', unitsPerPackage: 1 },
+      { genericName: 'Sevelámero', activeIngredient: 'Sevelámero', presentation: '800 mg tabletas', doseUnit: 'tablet', unitsPerPackage: 90 },
+      { genericName: 'Carbonato de calcio', activeIngredient: 'Carbonato de calcio', presentation: '600 mg tabletas', doseUnit: 'tablet', unitsPerPackage: 30 },
+      { genericName: 'Bicarbonato de sodio', activeIngredient: 'Bicarbonato de sodio', presentation: '650 mg tabletas', doseUnit: 'tablet', unitsPerPackage: 30 },
+      // Neumología
+      { genericName: 'Salbutamol', activeIngredient: 'Salbutamol', presentation: '100 mcg inhalador', doseUnit: 'puff', unitsPerPackage: 200 },
+      { genericName: 'Budesonida', activeIngredient: 'Budesonida', presentation: '200 mcg inhalador', doseUnit: 'puff', unitsPerPackage: 200 },
+      { genericName: 'Montelukast', activeIngredient: 'Montelukast', presentation: '10 mg tabletas', doseUnit: 'tablet', unitsPerPackage: 30 },
+      { genericName: 'Tiotropio', activeIngredient: 'Tiotropio', presentation: '18 mcg cápsulas inhalación', doseUnit: 'tablet', unitsPerPackage: 30 },
+      { genericName: 'Formoterol', activeIngredient: 'Formoterol', presentation: '12 mcg inhalador', doseUnit: 'puff', unitsPerPackage: 120 },
     ];
     for (const example of examples) {
-      const medication = await tx.medication.findFirst({ where: { genericName: example.genericName, presentation: example.presentation } });
+      const medication = await tx.medication.findFirst({ where: { organizationId, genericName: example.genericName, presentation: example.presentation } });
       if (medication) await tx.medication.update({
         where: { organizationId_id: { organizationId, id: medication.id } },
-        data: { ...example, doseUnit: 'tablet' },
+        data: { ...example },
       });
-      else await tx.medication.create({ data: { organizationId, brandName: null, ...example, doseUnit: 'tablet' } });
+      else await tx.medication.create({ data: { organizationId, brandName: null, ...example } });
     }
     const templates = [
       {

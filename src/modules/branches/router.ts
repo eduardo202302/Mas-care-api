@@ -1,14 +1,14 @@
 import { Router } from 'express';
 import { z } from 'zod';
-import { branchInput } from '../../schemas/branch.js';
+import { branchInput, branchListQuery } from '../../schemas/branch.js';
 import { puede } from '../../domain/permissions.js';
 import { resolveTenant } from '../../infra/tenant.js';
 import { withTenant } from '../../infra/prisma.js';
 import { ApiError } from '../../infra/errors.js';
 import { Prisma } from '@prisma/client';
 import { record } from '../audit/record.js';
-import { optionalPaging, sliceIfPaged } from '../../infra/pagination.js';
-import { validateBody, validateParams } from '../../infra/validate.js';
+import { sliceIfPaged } from '../../infra/pagination.js';
+import { validateBody, validateParams, validateQuery } from '../../infra/validate.js';
 import { canAccessBranch } from '../../infra/patient-access.js';
 import { stockMarkInput, stockMarkParams } from '../../schemas/stock.js';
 
@@ -16,9 +16,10 @@ const compact = (value: object) => Object.fromEntries(Object.entries(value).filt
 
 export const branchesRouter = Router();
 branchesRouter.use(resolveTenant);
-branchesRouter.get('/', async (req, res, next) => {
+branchesRouter.get('/', validateQuery(branchListQuery), async (req, res, next) => {
   try { const t = req.tenant!; if (!puede(t.role, 'branches:read')) throw new ApiError(403, 'FORBIDDEN', 'Permission denied');
-    const branches = await withTenant(t.organizationId, (tx) => tx.branch.findMany({ where: { organizationId: t.organizationId, archivedAt: null }, orderBy: { name: 'asc' } })); res.json(sliceIfPaged(branches, optionalPaging.parse(req.query)));
+    const query = res.locals.validatedQuery as z.infer<typeof branchListQuery>;
+    const branches = await withTenant(t.organizationId, (tx) => tx.branch.findMany({ where: { organizationId: t.organizationId, archivedAt: query.archived ? { not: null } : null }, orderBy: { name: 'asc' } })); res.json(sliceIfPaged(branches, query));
   } catch (e) { next(e); }
 });
 branchesRouter.post('/', validateBody(branchInput), async (req, res, next) => {
@@ -57,6 +58,18 @@ branchesRouter.delete('/:id', validateParams(z.object({ id: z.string().min(1) })
       await tx.branch.update({ where: { organizationId_id: { organizationId: t.organizationId, id: exists.id } }, data: { archivedAt: new Date() } });
       await record(tx, { organizationId: t.organizationId, actorId: t.userId, action: 'branch.archive', subjectId: exists.id });
     }); res.status(204).end();
+  } catch (e) { next(e); }
+});
+branchesRouter.post('/:id/restore', validateParams(z.object({ id: z.string().min(1) })), async (req, res, next) => {
+  try { const t = req.tenant!; if (!puede(t.role, 'branches:write')) throw new ApiError(403, 'FORBIDDEN', 'Permission denied');
+    const params = res.locals.validatedParams as { id: string };
+    const branch = await withTenant(t.organizationId, async (tx) => {
+      const exists = await tx.branch.findFirst({ where: { organizationId: t.organizationId, id: params.id, archivedAt: { not: null } } });
+      if (!exists) throw new ApiError(404, 'NOT_FOUND', 'Branch not found');
+      const restored = await tx.branch.update({ where: { organizationId_id: { organizationId: t.organizationId, id: exists.id } }, data: { archivedAt: null } });
+      await record(tx, { organizationId: t.organizationId, actorId: t.userId, action: 'branch.restore', subjectId: exists.id });
+      return restored;
+    }); res.json(branch);
   } catch (e) { next(e); }
 });
 branchesRouter.put('/:branchId/stock-marks/:medicationId', validateParams(stockMarkParams), validateBody(stockMarkInput), async (req, res, next) => {

@@ -41,7 +41,7 @@ export const roleListQuery = z.object({
 });
 
 export const roleSchema = z.object({
-  id: z.string(), key: z.string().nullable(), name: z.string(), description: z.string().nullable(),
+  id: z.string(), numericId: z.string(), key: z.string().nullable(), name: z.string(), description: z.string().nullable(),
   baseRole: z.string(), isSystem: z.boolean(), isActive: z.boolean(), memberCount: z.number().int(),
   items: z.array(z.object({
     menuItemId: z.string(), canView: z.boolean(), canCreate: z.boolean(), canEdit: z.boolean(), canDelete: z.boolean(),

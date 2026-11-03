@@ -22,6 +22,10 @@ type Def<R> = Record<string, { header: string; value: (row: R) => Cell }>;
 
 const date = (value: Date | null) => (value ? value.toISOString().slice(0, 10) : null);
 const num = (value: { toString(): string } | null) => (value === null ? null : Number(value.toString()));
+const addressField = (details: unknown, key: string): string | null => {
+  const value = (details as Record<string, unknown> | null)?.[key];
+  return typeof value === 'string' ? value : null;
+};
 
 type PatientRow = Prisma.PatientGetPayload<{ include: { primaryBranch: { select: { name: true } }; responsibleUser: { select: { name: true } } } }>;
 const patientColumns: Def<PatientRow> = {
@@ -31,8 +35,10 @@ const patientColumns: Def<PatientRow> = {
   birthDate: { header: 'Fecha de nacimiento', value: (r) => date(r.birthDate) },
   phone: { header: 'Teléfono', value: (r) => r.phone },
   email: { header: 'Correo', value: (r) => r.email },
-  address: { header: 'Dirección', value: (r) => r.address },
-  zone: { header: 'Zona', value: (r) => r.zone },
+  address: { header: 'Dirección', value: (r) => addressField(r.addressDetails, 'address') },
+  region: { header: 'Región', value: (r) => addressField(r.addressDetails, 'region') },
+  city: { header: 'Ciudad', value: (r) => addressField(r.addressDetails, 'city') },
+  sector: { header: 'Sector', value: (r) => addressField(r.addressDetails, 'sector') },
   preferredChannel: { header: 'Canal preferido', value: (r) => r.preferredChannel },
   reminderConsent: { header: 'Consentimiento de recordatorios', value: (r) => r.reminderConsent },
   primaryBranchId: { header: 'ID sucursal', value: (r) => r.primaryBranchId },

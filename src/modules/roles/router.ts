@@ -26,6 +26,7 @@ const countMembers = (role: DbRole, members: Member[]) =>
 
 const toDto = (role: DbRole, memberCount: number, grants: Grant[]) => ({
   id: role.id,
+  numericId: role.numericId,
   key: role.key,
   name: role.name,
   description: role.description,

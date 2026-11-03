@@ -56,6 +56,7 @@ transfersRouter.get('/', validateQuery(transferListQuery), async (req, res) => {
     return {
       data: data.map((row) => ({
         id: row.id,
+        numeric_id: row.numericId,
         occurred_at: row.createdAt,
         patient: { id: row.patient.id, full_name: row.patient.fullName },
         from_branch: { id: row.fromBranch.id, name: row.fromBranch.name },

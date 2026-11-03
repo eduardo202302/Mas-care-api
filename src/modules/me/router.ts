@@ -17,7 +17,7 @@ meRouter.get('/', resolveTenant, async (req, res, next) => {
     const catalog = await loadCatalog();
     // Branches and role share one transaction: each extra one costs several round trips.
     const [organization, { branches, roleInfo }] = await Promise.all([
-      prisma.organization.findUniqueOrThrow({ where: { id: tenant.organizationId }, select: { id: true, name: true } }),
+      prisma.organization.findUniqueOrThrow({ where: { id: tenant.organizationId }, select: { id: true, name: true, googleMapsApiKey: true } }),
       withTenant(tenant.organizationId, async (tx) => {
         const branches = await tx.branch.findMany({ where: { organizationId: tenant.organizationId, archivedAt: null }, select: { id: true, name: true, labelColor: true } });
         const role = await findMemberRole(tx, tenant);

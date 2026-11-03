@@ -104,3 +104,20 @@ medicationsRouter.post('/:id/archive', validateParams(medicationParams), async (
   });
   res.json(medication);
 });
+
+medicationsRouter.post('/:id/restore', validateParams(medicationParams), async (req, res) => {
+  const tenant = req.tenant!;
+  requirePermission(tenant.role, 'medications:write');
+  const { id } = res.locals.validatedParams as z.infer<typeof medicationParams>;
+  const medication = await withTenant(tenant.organizationId, async (tx) => {
+    const existing = await tx.medication.findFirst({ where: { id, archivedAt: { not: null } } });
+    if (!existing) throw new ApiError(404, 'NOT_FOUND', 'Medication not found');
+    const restored = await tx.medication.update({
+      where: { organizationId_id: { organizationId: tenant.organizationId, id } },
+      data: { archivedAt: null },
+    });
+    await record(tx, { organizationId: tenant.organizationId, actorId: tenant.userId, action: 'medication.restore', subjectId: id });
+    return restored;
+  });
+  res.json(medication);
+});

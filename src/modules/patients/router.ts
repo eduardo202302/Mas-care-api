@@ -91,9 +91,16 @@ patientsRouter.get('/', validateQuery(patientListQuery), async (req, res) => {
       take: args.take,
       skip: args.skip,
       ...(args.cursor ? { cursor: { organizationId_id: { organizationId: tenant.organizationId, id: args.cursor } } } : {}),
+      include: { conditions: { where: { isPrimary: true, isActive: true }, take: 1, include: { condition: { select: { name: true } } } } },
     }), () => tx.patient.count({ where }));
     await record(tx, { organizationId: tenant.organizationId, actorId: tenant.userId, action: 'patient.list' });
-    return page;
+    return {
+      ...page,
+      data: page.data.map(({ conditions, ...patient }) => ({
+        ...patient,
+        primaryConditionName: conditions[0]?.condition.name ?? null,
+      })),
+    };
   });
   res.json(result);
 });
@@ -250,7 +257,13 @@ patientsRouter.post('/:id/caregivers', validateParams(patientParams), validateBo
   const input = req.body as z.infer<typeof caregiverInput>;
   const caregiver = await withTenant(tenant.organizationId, async (tx) => {
     if (!await findAccessiblePatient(tx, tenant, id, { archivedAt: null })) throw new ApiError(404, 'NOT_FOUND', 'Patient not found');
-    const created = await tx.patientCaregiver.create({ data: { ...input, organizationId: tenant.organizationId, patientId: id } });
+    const created = await tx.patientCaregiver.create({
+      data: {
+        ...nonEmpty(input),
+        organizationId: tenant.organizationId,
+        patientId: id,
+      } as Prisma.PatientCaregiverUncheckedCreateInput,
+    });
     await record(tx, { organizationId: tenant.organizationId, actorId: tenant.userId, action: 'patient.caregiver.create', subjectId: id });
     return created;
   });
@@ -324,7 +337,14 @@ patientsRouter.get('/:id/doctors', validateParams(patientParams), async (req, re
     return tx.patientDoctor.findMany({
       where: { patientId: id, isActive: true },
       orderBy: [{ isPrimary: 'desc' }, { startedAt: 'desc' }],
-      include: { doctor: { select: { id: true, firstName: true, lastName: true, phone: true, licenseNumber: true } } },
+      include: {
+        doctor: {
+          select: {
+            id: true, firstName: true, lastName: true, phone: true, licenseNumber: true,
+            specialties: { include: { specialty: { select: { id: true, name: true } } } },
+          },
+        },
+      },
     });
   });
   res.json({ data });
@@ -416,7 +436,7 @@ patientsRouter.get('/:id/conditions', validateParams(patientParams), async (req,
     if (!await findAccessiblePatient(tx, tenant, id)) throw new ApiError(404, 'NOT_FOUND', 'Patient not found');
     return tx.patientCondition.findMany({
       where: { patientId: id, isActive: true },
-      orderBy: [{ createdAt: 'desc' }],
+      orderBy: [{ isPrimary: 'desc' }, { createdAt: 'desc' }],
       include: { condition: { select: { id: true, name: true } } },
     });
   });
@@ -433,12 +453,18 @@ patientsRouter.post('/:id/conditions', validateParams(patientParams), validateBo
       if (!await findAccessiblePatient(tx, tenant, id, { archivedAt: null })) throw new ApiError(404, 'NOT_FOUND', 'Patient not found');
       const condition = await tx.healthCondition.findUnique({ where: { id: input.healthConditionId } });
       if (!condition) throw new ApiError(404, 'CONDITION_NOT_FOUND', 'Condición de salud no encontrada.');
+      if (input.isPrimary) {
+        await tx.patientCondition.updateMany({
+          where: { organizationId: tenant.organizationId, patientId: id, isActive: true, isPrimary: true },
+          data: { isPrimary: false },
+        });
+      }
       let created;
       try {
         created = await tx.patientCondition.create({
           data: {
             organizationId: tenant.organizationId, patientId: id, healthConditionId: input.healthConditionId,
-            status: input.status, recordedBy: tenant.userId,
+            status: input.status, recordedBy: tenant.userId, isPrimary: input.isPrimary,
             ...(input.diagnosedOn !== undefined ? { diagnosedOn: input.diagnosedOn ? new Date(`${input.diagnosedOn}T00:00:00.000Z`) : null } : {}),
             ...(input.notes !== undefined ? { notes: input.notes } : {}),
           } as Prisma.PatientConditionUncheckedCreateInput,
@@ -466,6 +492,12 @@ patientsRouter.patch('/:id/conditions/:conditionId', validateParams(patientCondi
       if (!await findAccessiblePatient(tx, tenant, id, { archivedAt: null })) throw new ApiError(404, 'NOT_FOUND', 'Patient not found');
       const existing = await tx.patientCondition.findFirst({ where: { patientId: id, healthConditionId: conditionId, isActive: true } });
       if (!existing) throw new ApiError(404, 'NOT_FOUND', 'El paciente no tiene esta condición registrada activamente.');
+      if (input.isPrimary) {
+        await tx.patientCondition.updateMany({
+          where: { organizationId: tenant.organizationId, patientId: id, isActive: true, isPrimary: true, NOT: { id: existing.id } },
+          data: { isPrimary: false },
+        });
+      }
       const { diagnosedOn, ...rest } = input;
       let updated;
       try {
@@ -792,6 +824,7 @@ patientsRouter.get('/:id/transfers', validateParams(patientParams), validateQuer
     return {
       data: data.map((row) => ({
         id: row.id,
+        numeric_id: row.numericId,
         occurred_at: row.createdAt,
         from_branch: { id: row.fromBranch.id, name: row.fromBranch.name },
         to_branch: { id: row.toBranch.id, name: row.toBranch.name },
@@ -827,8 +860,7 @@ patientsRouter.post('/:id/duplicate', validateParams(patientParams), async (req,
         primaryBranchId: source.primaryBranchId,
         fullName: `${source.fullName} (copia)`.slice(0, 160),
         birthDate: source.birthDate,
-        address: source.address,
-        zone: source.zone,
+        addressDetails: source.addressDetails as Prisma.InputJsonValue | undefined,
         preferredChannel: source.preferredChannel,
         careNotes: source.careNotes,
         responsibleUserId: source.responsibleUserId,

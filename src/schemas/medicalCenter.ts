@@ -4,15 +4,23 @@ import { pagingFields } from '../infra/pagination.js';
 export const medicalCenterTypes = ['clinic', 'hospital', 'medical_center', 'private_office', 'other'] as const;
 const optionalText = (max: number) => z.string().trim().max(max).nullable().optional();
 
+// Passthrough: new address fields are accepted without a schema change or migration.
+const medicalCenterAddressDetails = z.object({
+  address: z.string().trim().max(500).optional(),
+  region: z.string().trim().max(120).optional(),
+  city: z.string().trim().max(120).optional(),
+  sector: z.string().trim().max(120).optional(),
+  latitude: z.coerce.number().min(-90).max(90).optional(),
+  longitude: z.coerce.number().min(-180).max(180).optional(),
+}).partial().passthrough();
+
 const medicalCenterFields = {
   name: z.string().trim().min(1).max(160),
   centerType: z.enum(medicalCenterTypes).optional(),
   rnc: optionalText(40),
   phone: optionalText(40),
   email: z.string().trim().email().max(254).nullable().optional(),
-  address: z.string().trim().max(500).nullable().optional(),
-  province: optionalText(120),
-  municipality: optionalText(120),
+  addressDetails: medicalCenterAddressDetails.nullable().optional(),
   notes: z.string().trim().max(2000).nullable().optional(),
   isActive: z.boolean().optional(),
 };

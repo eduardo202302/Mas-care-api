@@ -59,6 +59,10 @@ export const companyCreate = z
     city: optionalText(120),
     state: optionalText(120),
     postalCode: optionalText(20),
+    address: optionalText(500),
+    sector: optionalText(120),
+    latitude: optionalText(20),
+    longitude: optionalText(20),
     employeeCount: z.preprocess(
       (value) => (value === '' || value === null ? undefined : value),
       z.coerce.number().int().min(0).max(10_000_000).optional(),
@@ -75,6 +79,7 @@ export const companyCreate = z
       .max(300)
       .optional()
       .or(z.literal('').transform(() => undefined)),
+    googleMapsApiKey: optionalText(500),
   })
   .strict();
 

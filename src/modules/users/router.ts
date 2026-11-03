@@ -43,7 +43,7 @@ usersRouter.post('/', async (req, res, next) => {
     const recoveryPin = createPin(input.pin);
     const pinUpdatedAt = new Date();
 
-    await prisma.user.update({
+    const updatedUser = await prisma.user.update({
       where: { id: user.id },
       data: {
         username: input.username,
@@ -52,6 +52,7 @@ usersRouter.post('/', async (req, res, next) => {
         passwordPinEncrypted: recoveryPin.encrypted,
         passwordPinUpdatedAt: pinUpdatedAt,
       },
+      select: { numericId: true },
     });
     await prisma.session.deleteMany({ where: { userId: user.id } });
 
@@ -112,6 +113,7 @@ usersRouter.post('/', async (req, res, next) => {
 
     res.status(201).json({
       id: user.id,
+      numericId: updatedUser.numericId,
       name: user.name,
       email: user.email,
       username: input.username,
@@ -151,7 +153,7 @@ usersRouter.get('/', async (req, res, next) => {
           createdAt: true,
           user: {
             select: {
-              id: true, name: true, username: true, email: true, phone: true, createdAt: true,
+              id: true, numericId: true, name: true, username: true, email: true, phone: true, createdAt: true,
               branchMemberships: {
                 where: { organizationId: tenant.organizationId },
                 select: { branch: { select: { id: true, name: true } } },
@@ -166,6 +168,7 @@ usersRouter.get('/', async (req, res, next) => {
       }), () => tx.member.count({ where }));
       const rows = result.data.map(({ user, role, roleId, roleRef, createdAt }) => ({
         id: user.id,
+        numericId: user.numericId,
         name: user.name,
         username: user.username,
         email: user.email,
@@ -198,7 +201,7 @@ usersRouter.get('/:id', async (req, res, next) => {
           createdAt: true,
           user: {
             select: {
-              id: true, name: true, username: true, email: true, phone: true, createdAt: true,
+              id: true, numericId: true, name: true, username: true, email: true, phone: true, createdAt: true,
               passwordPinEncrypted: true, passwordPinUpdatedAt: true,
               branchMemberships: {
                 where: { organizationId: tenant.organizationId },
@@ -216,6 +219,7 @@ usersRouter.get('/:id', async (req, res, next) => {
         : null;
       return {
         id: member.user.id,
+        numericId: member.user.numericId,
         name: member.user.name,
         email: member.user.email,
         username: member.user.username,
@@ -360,7 +364,7 @@ usersRouter.patch('/:id', async (req, res, next) => {
           createdAt: true,
           user: {
             select: {
-              id: true, name: true, username: true, email: true, phone: true, createdAt: true,
+              id: true, numericId: true, name: true, username: true, email: true, phone: true, createdAt: true,
               branchMemberships: {
                 where: { organizationId: tenant.organizationId },
                 select: { branch: { select: { id: true, name: true } } },
@@ -372,6 +376,7 @@ usersRouter.patch('/:id', async (req, res, next) => {
     );
     res.json({
       id: updated.user.id,
+      numericId: updated.user.numericId,
       name: updated.user.name,
       email: updated.user.email,
       username: updated.user.username,
