@@ -240,7 +240,7 @@ exportsRouter.post('/:entity', exportRateLimit, validateParams(exportParams), va
   if (!puede(tenant.role, 'export:csv')) throw new ApiError(403, 'FORBIDDEN', 'export:csv permission required');
   const { entity } = res.locals.validatedParams as z.infer<typeof exportParams>;
   const input = req.body as z.infer<typeof exportInput>;
-  const { rows, columns } = await withTenant(tenant.organizationId, async (tx) => {
+  const { rows, columns, company, branchLabel } = await withTenant(tenant.organizationId, async (tx) => {
     const catalog = await catalogFor(entity, tx);
     const unknown = input.columns.filter((key) => !(key in catalog));
     if (unknown.length) throw new ApiError(400, 'INVALID_COLUMNS', `Columnas desconocidas: ${unknown.join(', ')}`);
@@ -256,7 +256,16 @@ exportsRouter.post('/:entity', exportRateLimit, validateParams(exportParams), va
       action: 'export.create',
       metadata: { entity, format: input.format, rows: found.length, columns: input.columns },
     });
-    return { rows: found, columns };
+    // El Excel de tratamientos lleva compañía y sucursal arriba, igual que la impresión.
+    let company = '';
+    let branchLabel = '';
+    if (entity === 'treatments') {
+      company = (await tx.organization.findUnique({ where: { id: tenant.organizationId }, select: { name: true } }))?.name ?? '';
+      branchLabel = input.branchId
+        ? (await tx.branch.findFirst({ where: { id: input.branchId }, select: { name: true } }))?.name ?? ''
+        : 'Todas las Sucursales';
+    }
+    return { rows: found, columns, company, branchLabel };
   });
 
   const table = rows.map((row) => columns.map((col) => safe(col.value(row))));
@@ -271,7 +280,14 @@ exportsRouter.post('/:entity', exportRateLimit, validateParams(exportParams), va
   }
   const workbook = new ExcelJS.Workbook();
   const sheet = workbook.addWorksheet(entity);
-  sheet.addRow(columns.map((c) => c.header));
+  if (entity === 'treatments') {
+    sheet.addRow([company]).font = { bold: true, size: 13 };
+    sheet.addRow([`Sucursal: ${branchLabel}`]);
+    sheet.addRow(['Tratamientos']).font = { bold: true };
+    sheet.addRow([]);
+  }
+  const headerRow = sheet.addRow(columns.map((c) => c.header));
+  if (entity === 'treatments') headerRow.font = { bold: true };
   table.forEach((row) => sheet.addRow(row));
   res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
   res.setHeader('Content-Disposition', `attachment; filename="${entity}.xlsx"`);

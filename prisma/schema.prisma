@@ -244,6 +244,7 @@ model Medication {
   organization     Organization          @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   treatments       Treatment[]
   stockMarks       MedicationStockMark[]
+  attachments      MedicationAttachment[]
   numericId        BigInt                @unique @default(dbgenerated("nextval('global_numeric_id_seq'::regclass)")) @map("numeric_id")
 
   @@unique([organizationId, id])
@@ -252,6 +253,25 @@ model Medication {
   @@index([genericName(ops: raw("gin_trgm_ops"))], type: Gin, map: "medications_generic_name_trgm_idx")
   @@index([activeIngredient(ops: raw("gin_trgm_ops"))], type: Gin, map: "medications_active_ingredient_trgm_idx")
   @@map("medications")
+}
+
+model MedicationAttachment {
+  id             String     @id @default(cuid())
+  organizationId String     @map("organization_id")
+  medicationId   String     @map("medication_id")
+  kind           String
+  originalName   String     @map("original_name")
+  mimeType       String     @map("mime_type")
+  sizeBytes      Int        @map("size_bytes")
+  storagePath    String     @map("storage_path")
+  isPrimary      Boolean    @default(false) @map("is_primary")
+  createdAt      DateTime   @default(now()) @map("created_at")
+  medication     Medication @relation(fields: [organizationId, medicationId], references: [organizationId, id], onDelete: Cascade)
+  numericId      BigInt     @unique @default(dbgenerated("nextval('global_numeric_id_seq'::regclass)")) @map("numeric_id")
+
+  @@unique([organizationId, id])
+  @@index([organizationId, medicationId])
+  @@map("medication_attachments")
 }
 
 model Doctor {

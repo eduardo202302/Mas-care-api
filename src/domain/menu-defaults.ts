@@ -14,7 +14,7 @@ export type MenuSeed = {
 // The same rows are inserted by the `menu_roles` migration; after that the
 // catalog is managed from the API (/api/v1/menu).
 export const menuSeeds: readonly MenuSeed[] = [
-  { key: 'inicio', label: 'Panel del día', path: '/inicio', icon: 'activity', order: 10, permission: null, parentKey: null },
+  { key: 'inicio', label: 'Panel del Día', path: '/inicio', icon: 'activity', order: 10, permission: null, parentKey: null },
   { key: 'tablero', label: 'Tablero', path: '/tablero', icon: 'kanban', order: 15, permission: null, parentKey: null },
   { key: 'incidencias', label: 'Incidencias', path: '/incidencias', icon: 'triangle-alert', order: 16, permission: null, parentKey: null },
   { key: 'avisos', label: 'Avisos', path: '/avisos', icon: 'send', order: 17, permission: 'outbox:view', parentKey: null },
@@ -28,16 +28,16 @@ export const menuSeeds: readonly MenuSeed[] = [
   { key: 'sucursales', label: 'Sucursales', path: '/ajustes/sucursales', icon: 'store', order: 61, permission: null, parentKey: 'ajustes' },
   { key: 'usuarios', label: 'Usuarios', path: '/ajustes/usuarios', icon: 'user-round', order: 62, permission: null, parentKey: 'ajustes' },
   { key: 'plantillas', label: 'Plantillas', path: '/ajustes/plantillas', icon: 'message-square-text', order: 63, permission: 'templates:read', parentKey: 'ajustes' },
-  { key: 'umbrales', label: 'Parámetros de tiempo', path: '/ajustes/umbrales', icon: 'sliders-horizontal', order: 64, permission: 'settings:read', parentKey: 'ajustes' },
+  { key: 'umbrales', label: 'Parámetros de Tiempo', path: '/ajustes/umbrales', icon: 'sliders-horizontal', order: 64, permission: 'settings:read', parentKey: 'ajustes' },
   { key: 'roles', label: 'Roles', path: '/ajustes/roles', icon: 'shield-check', order: 65, permission: 'roles:read', parentKey: 'ajustes' },
   { key: 'menu', label: 'Menú', path: '/ajustes/menu', icon: 'list-tree', order: 66, permission: 'menu:write', parentKey: 'ajustes' },
   { key: 'existencias', label: 'Existencias', path: '/ajustes/existencias', icon: 'packages', order: 67, permission: 'stock:mark', parentKey: 'ajustes' },
-  { key: 'etapas', label: 'Etapas del tablero', path: '/ajustes/etapas', icon: 'kanban', order: 68, permission: 'settings:write', parentKey: 'ajustes' },
+  { key: 'etapas', label: 'Etapas del Tablero', path: '/ajustes/etapas', icon: 'kanban', order: 68, permission: 'settings:write', parentKey: 'ajustes' },
   { key: 'propiedades', label: 'Propiedades', path: '/ajustes/propiedades', icon: 'list-tree', order: 69, permission: 'settings:write', parentKey: 'ajustes' },
   { key: 'medicos', label: 'Médicos', path: '/medicos', icon: 'stethoscope', order: 51, permission: 'doctors:read', parentKey: null },
   { key: 'especialidades', label: 'Especialidades', path: '/especialidades', icon: 'award', order: 52, permission: 'specialties:read', parentKey: null },
-  { key: 'centros_medicos', label: 'Centros médicos', path: '/centros-medicos', icon: 'hospital', order: 53, permission: 'medical-centers:read', parentKey: null },
-  { key: 'condiciones_salud', label: 'Condiciones de salud', path: '/condiciones-salud', icon: 'heart-pulse', order: 54, permission: 'health-conditions:read', parentKey: null },
+  { key: 'centros_medicos', label: 'Centros Médicos', path: '/centros-medicos', icon: 'hospital', order: 53, permission: 'medical-centers:read', parentKey: null },
+  { key: 'condiciones_salud', label: 'Condiciones de Salud', path: '/condiciones-salud', icon: 'heart-pulse', order: 54, permission: 'health-conditions:read', parentKey: null },
 ];
 
 export const menuItemId = (key: string) => `menu_${key}`;

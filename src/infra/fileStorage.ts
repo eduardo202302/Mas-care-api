@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { mkdirSync } from 'node:fs';
+import { rm } from 'node:fs/promises';
 import path from 'node:path';
 import multer from 'multer';
 
@@ -46,6 +47,35 @@ export const prescriptionDocumentUpload = multer({
   limits: { fileSize: 10 * 1024 * 1024, files: 1 },
 }).single('prescription_document');
 
+const MEDICATION_FILES_DIR = 'medications';
+const IMAGE_MIME_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp', 'image/gif']);
+const DOCUMENT_MIME_TYPES = new Set([
+  'application/pdf',
+  'application/msword',
+  'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  'application/vnd.ms-excel',
+  'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+  'text/plain',
+]);
+
+export function medicationAttachmentKind(mimeType: string): 'image' | 'document' | null {
+  if (IMAGE_MIME_TYPES.has(mimeType)) return 'image';
+  if (DOCUMENT_MIME_TYPES.has(mimeType)) return 'document';
+  return null;
+}
+
+export const medicationAttachmentUpload = multer({
+  storage: diskStorageFor(MEDICATION_FILES_DIR),
+  limits: { fileSize: 10 * 1024 * 1024, files: 1 },
+  fileFilter: (_req, file, callback) => {
+    callback(null, medicationAttachmentKind(file.mimetype) !== null);
+  },
+}).single('file');
+
+export function medicationAttachmentRelativePath(organizationId: string, filename: string): string {
+  return path.join(MEDICATION_FILES_DIR, organizationId, filename);
+}
+
 /** Path stored on DoseSchedule.authorizationDocumentPath: relative to UPLOADS_ROOT, tenant-prefixed. */
 export function authorizationDocumentRelativePath(organizationId: string, filename: string): string {
   return path.join(AUTHORIZATION_DOCS_DIR, organizationId, filename);
@@ -71,3 +101,13 @@ export function authorizationDocumentAbsolutePath(relativePath: string): string 
 }
 
 export const prescriptionDocumentAbsolutePath = authorizationDocumentAbsolutePath;
+export const medicationAttachmentAbsolutePath = authorizationDocumentAbsolutePath;
+
+/** Best-effort removal of an uploaded file; the DB row is the source of truth. */
+export async function removeStoredFile(relativePath: string): Promise<void> {
+  try {
+    await rm(authorizationDocumentAbsolutePath(relativePath), { force: true });
+  } catch {
+    // ignore: an orphaned file is harmless, a failed request is not
+  }
+}
