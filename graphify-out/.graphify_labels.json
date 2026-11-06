@@ -1,6 +1,5 @@
 {
   "2": "OpenAPI Schema Definitions",
-  "3": "Notification & Messaging Domain",
   "6": "CI Pipeline",
   "8": "Backup Automation",
   "11": "Patient Management API",
@@ -11,7 +10,6 @@
   "16": "README: Audit & Coverage Docs",
   "21": "Linting Config",
   "22": "Code Formatting Config",
-  "23": "OpenAPI Export Script",
   "25": "Postgres Backup Script",
   "26": "Postgres Restore Script",
   "28": "Pino Logger",

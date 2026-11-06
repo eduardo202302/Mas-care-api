@@ -20,6 +20,7 @@ import {
   patientListQuery, patientParams, patientPatch,
 } from '../../schemas/patient.js';
 import { patientTransferListQuery, transferInput } from '../../schemas/transfer.js';
+import { summarizeChanges } from '../treatments/router.js';
 
 export const patientsRouter = Router();
 patientsRouter.use(resolveTenant);
@@ -42,6 +43,67 @@ const assertResponsibleMember = async (tx: Prisma.TransactionClient, organizatio
   const member = await tx.member.findFirst({ where: { organizationId, userId }, select: { id: true } });
   if (!member) throw new ApiError(400, 'INVALID_RESPONSIBLE_USER', 'Responsible user must belong to this organization');
 };
+
+type PatientChange = { field: string; label: string; from: string | null; to: string | null };
+
+const changeDate = (value: Date | null | undefined) => (value ? value.toISOString().slice(0, 10) : null);
+const changeText = (value: unknown) =>
+  value === null || value === undefined || String(value).trim() === '' ? null : String(value);
+const preferredChannelLabels: Record<string, string> = { whatsapp: 'WhatsApp', call: 'Llamada', sms: 'SMS', telegram: 'Telegram' };
+
+async function branchLabelById(tx: Prisma.TransactionClient, id: string | null): Promise<string | null> {
+  if (!id) return null;
+  const branch = await tx.branch.findUnique({ where: { id }, select: { name: true } });
+  return branch?.name ?? null;
+}
+async function userLabelById(tx: Prisma.TransactionClient, id: string | null): Promise<string | null> {
+  if (!id) return null;
+  const user = await tx.user.findUnique({ where: { id }, select: { name: true } });
+  return user?.name ?? null;
+}
+
+/**
+ * Describe el PATCH de paciente en el historial. Sin esto la actividad
+ * quedaba como «Datos del Paciente Actualizados» sin decir qué se tocó.
+ */
+async function patientChanges(
+  tx: Prisma.TransactionClient,
+  before: Prisma.PatientGetPayload<object>,
+  after: Prisma.PatientGetPayload<object>,
+): Promise<PatientChange[]> {
+  const changes: PatientChange[] = [];
+  const push = (field: string, label: string, from: string | null, to: string | null) => {
+    if ((from ?? '') !== (to ?? '')) changes.push({ field, label, from, to });
+  };
+  push('full_name', 'Nombre', changeText(before.fullName), changeText(after.fullName));
+  push('document_id', 'Documento', changeText(before.documentId), changeText(after.documentId));
+  push('birth_date', 'Fecha de nacimiento', changeDate(before.birthDate), changeDate(after.birthDate));
+  push('phone', 'Teléfono', changeText(before.phone), changeText(after.phone));
+  push('phone_has_whatsapp', 'WhatsApp', before.phoneHasWhatsapp ? 'Sí' : 'No', after.phoneHasWhatsapp ? 'Sí' : 'No');
+  push('email', 'Correo', changeText(before.email), changeText(after.email));
+  push(
+    'preferred_channel',
+    'Canal preferido',
+    preferredChannelLabels[before.preferredChannel] ?? before.preferredChannel,
+    preferredChannelLabels[after.preferredChannel] ?? after.preferredChannel,
+  );
+  if (before.primaryBranchId !== after.primaryBranchId) {
+    push('primary_branch_id', 'Sucursal', await branchLabelById(tx, before.primaryBranchId), await branchLabelById(tx, after.primaryBranchId));
+  }
+  if (before.responsibleUserId !== after.responsibleUserId) {
+    push('responsible_user_id', 'Responsable', await userLabelById(tx, before.responsibleUserId), await userLabelById(tx, after.responsibleUserId));
+  }
+  if (changeText(before.careNotes) !== changeText(after.careNotes)) {
+    changes.push({ field: 'care_notes', label: 'Notas de cuidado', from: null, to: null });
+  }
+  if (JSON.stringify(before.addressDetails ?? null) !== JSON.stringify(after.addressDetails ?? null)) {
+    changes.push({ field: 'address_details', label: 'Dirección', from: null, to: null });
+  }
+  if (JSON.stringify(before.customValues) !== JSON.stringify(after.customValues)) {
+    changes.push({ field: 'custom_values', label: 'Propiedades personalizadas', from: null, to: null });
+  }
+  return changes;
+}
 
 const range = (from?: string, to?: string) => ({
   ...(from ? { gte: new Date(`${from}T00:00:00.000Z`) } : {}),
@@ -91,14 +153,18 @@ patientsRouter.get('/', validateQuery(patientListQuery), async (req, res) => {
       take: args.take,
       skip: args.skip,
       ...(args.cursor ? { cursor: { organizationId_id: { organizationId: tenant.organizationId, id: args.cursor } } } : {}),
-      include: { conditions: { where: { isPrimary: true, isActive: true }, take: 1, include: { condition: { select: { name: true } } } } },
+      include: {
+        conditions: { where: { isPrimary: true, isActive: true }, take: 1, include: { condition: { select: { name: true } } } },
+        _count: { select: { treatments: true } },
+      },
     }), () => tx.patient.count({ where }));
     await record(tx, { organizationId: tenant.organizationId, actorId: tenant.userId, action: 'patient.list' });
     return {
       ...page,
-      data: page.data.map(({ conditions, ...patient }) => ({
+      data: page.data.map(({ conditions, _count, ...patient }) => ({
         ...patient,
         primaryConditionName: conditions[0]?.condition.name ?? null,
+        treatmentsCount: _count.treatments,
       })),
     };
   });
@@ -161,8 +227,16 @@ patientsRouter.get('/:id', validateParams(patientParams), async (req, res) => {
   const { id } = res.locals.validatedParams as z.infer<typeof patientParams>;
   const patient = await withTenant(tenant.organizationId, async (tx) => {
     const row = await findAccessiblePatient(tx, tenant, id);
-    if (row) await record(tx, { organizationId: tenant.organizationId, actorId: tenant.userId, action: 'patient.read', subjectId: id });
-    return row;
+    if (!row) return null;
+    await record(tx, { organizationId: tenant.organizationId, actorId: tenant.userId, action: 'patient.read', subjectId: id });
+    // La condición principal acompaña al paciente en las fichas; se resuelve
+    // aquí para no pedir la lista completa solo por un nombre.
+    const primary = await tx.patientCondition.findFirst({
+      where: { organizationId: tenant.organizationId, patientId: id, isActive: true, isPrimary: true },
+      orderBy: { createdAt: 'asc' },
+      select: { condition: { select: { name: true } } },
+    });
+    return { ...row, primaryConditionName: primary?.condition.name ?? null };
   });
   if (!patient) throw new ApiError(404, 'NOT_FOUND', 'Patient not found');
   res.json(patient);
@@ -190,8 +264,16 @@ patientsRouter.patch('/:id', validateParams(patientParams), validateBody(patient
         ...(birthDate !== undefined ? { birthDate: birthDate ? new Date(birthDate + 'T00:00:00.000Z') : null } : {}),
       } as Prisma.PatientUncheckedUpdateInput,
     });
+    const changes = await patientChanges(tx, existing, updated);
     await tx.activity.create({
-      data: { organizationId: tenant.organizationId, patientId: id, type: 'patient_updated', body: '', authorId: tenant.userId },
+      data: {
+        organizationId: tenant.organizationId,
+        patientId: id,
+        type: 'patient_updated',
+        body: summarizeChanges(changes),
+        metadata: { fields: Object.keys(input), changes },
+        authorId: tenant.userId,
+      },
     });
     await record(tx, { organizationId: tenant.organizationId, actorId: tenant.userId, action: 'patient.update', subjectId: id });
     return updated;
@@ -342,6 +424,7 @@ patientsRouter.get('/:id/doctors', validateParams(patientParams), async (req, re
           select: {
             id: true, firstName: true, lastName: true, phone: true, licenseNumber: true,
             specialties: { include: { specialty: { select: { id: true, name: true } } } },
+            medicalCenters: { where: { isActive: true }, include: { medicalCenter: { select: { id: true, name: true } } } },
           },
         },
       },

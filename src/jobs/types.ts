@@ -8,6 +8,9 @@ export const JOBS = {
   cleanOutbox: 'limpieza-outbox',
   scheduledRules: 'reglas-programadas',
   processInbound: 'procesar-entrantes',
+  generateDoseOccurrences: 'generar-dosis',
+  doseReminders: 'recordatorios-dosis',
+  inventoryAlerts: 'alertas-inventario',
 } as const;
 export type JobName = (typeof JOBS)[keyof typeof JOBS];
 

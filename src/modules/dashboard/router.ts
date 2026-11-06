@@ -61,6 +61,7 @@ function presentRow(row: TreatmentRow, cycle: OpenCycle | null, settings: Settin
       coverageEndOn: row.coverageEndOn,
       coverageManuallyAdjusted: row.coverageManuallyAdjusted,
       prescriptionExpiresOn: row.prescriptionExpiresOn,
+      lastDeliveryOn: row.lastDeliveryOn,
     },
     cycle ? { status: cycle.status, hasDelivery: cycle._count.deliveries > 0 } : null,
     today,

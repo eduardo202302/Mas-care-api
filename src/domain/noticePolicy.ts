@@ -44,7 +44,7 @@ export type NoticePatientSnapshot = {
   phoneHasWhatsapp: boolean;
   reminderConsent: boolean;
   /** The patient own preference, when known. Telegram is used only if the patient linked a chat. */
-  preferredChannel?: 'whatsapp' | 'call' | 'sms' | 'telegram';
+  preferredChannel?: 'whatsapp' | 'call' | 'sms' | 'telegram' | 'email';
   /** The patient opened the bot link, so the organization bot can write to that chat. */
   telegramLinked?: boolean;
 };

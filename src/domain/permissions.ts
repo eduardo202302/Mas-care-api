@@ -10,6 +10,7 @@ export const actions = [
   'patient:transfer', 'export:csv',
   'doctors:read', 'doctors:write', 'specialties:read', 'specialties:write',
   'medical-centers:read', 'medical-centers:write', 'health-conditions:read', 'health-conditions:write',
+  'dose:log', 'dose:correct', 'inventory:purchase', 'inventory:adjust', 'inventory:settings:write',
 ] as const;
 export type Action = (typeof actions)[number];
 const grants: Record<Role, readonly Action[]> = {
@@ -24,6 +25,7 @@ const grants: Record<Role, readonly Action[]> = {
     'outbox:view', 'outbox:retry', 'inbound:assign', 'patient:transfer',
     'doctors:read', 'doctors:write', 'specialties:read', 'specialties:write',
     'medical-centers:read', 'medical-centers:write', 'health-conditions:read', 'health-conditions:write',
+    'dose:log', 'dose:correct', 'inventory:purchase', 'inventory:adjust',
   ],
   operator: [
     'branches:read', 'patients:read', 'patients:write', 'medications:read',
@@ -31,6 +33,7 @@ const grants: Record<Role, readonly Action[]> = {
     'cycle:move', 'stock:mark', 'incident:create', 'incident:move',
     'inbound:assign',
     'doctors:read', 'specialties:read', 'medical-centers:read', 'health-conditions:read',
+    'dose:log', 'inventory:purchase',
   ],
   read_only: [
     'branches:read', 'patients:read', 'medications:read', 'treatments:read',

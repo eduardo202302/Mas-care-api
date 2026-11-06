@@ -10,11 +10,13 @@ import { resolveTenant } from '../../infra/tenant.js';
 import { validateBody, validateParams, validateQuery } from '../../infra/validate.js';
 import { record } from '../audit/record.js';
 import { cycleParams } from '../../schemas/delivery.js';
-import { cycleBatchInput, cycleCreateInput, cycleExpectedOnInput, cycleListQuery, cycleMoveInput, eligibleTreatmentsQuery } from '../../schemas/board.js';
+import { cycleBatchInput, cycleCloseExternalInput, cycleCreateInput, cycleExpectedOnInput, cycleListQuery, cycleMoveInput, eligibleTreatmentsQuery } from '../../schemas/board.js';
 import { validateCycleMove } from '../../domain/cycleTransitions.js';
 import { branchScope, dateOnly, loadCycleCard, settingsFor, tableData, todayOnly } from '../board/service.js';
 import { resolveInsertion } from '../board/positions.js';
 import { columnOf } from '../pipelines/router.js';
+import { calculateCoverageEndOn, subtractDays } from '../../domain/coverage.js';
+import { effectiveDoseRate } from '../treatments/router.js';
 
 export const cyclesRouter = Router();
 cyclesRouter.use(resolveTenant);
@@ -100,6 +102,128 @@ cyclesRouter.post('/:id/mark-not-picked-up', validateParams(cycleParams), async 
   });
   res.json(result);
 });
+/**
+ * Cierra el ciclo cuando el medicamento se compró fuera de la farmacia. Se usa
+ * desde «Marcar entregado» y «Marcar no retirado» cuando el paciente responde
+ * que lo consiguió en otro lado: registra la compra externa, cierra el ciclo con
+ * el resultado indicado y (si lo recibió) extiende la cobertura del tratamiento.
+ */
+cyclesRouter.post('/:id/close-external', validateParams(cycleParams), validateBody(cycleCloseExternalInput), async (req, res) => {
+  const tenant = req.tenant!;
+  requirePermission(tenant.role, 'treatments:write');
+  const { id } = res.locals.validatedParams as z.infer<typeof cycleParams>;
+  const input = req.body as z.infer<typeof cycleCloseExternalInput>;
+  const result = await withTenant(tenant.organizationId, async (tx) => {
+    const cycle = await tx.refillCycle.findFirst({
+      where: { AND: [{ id }, await branchScope(tx, tenant)] },
+      include: { treatment: true },
+    });
+    if (!cycle) throw new ApiError(404, 'NOT_FOUND', 'Refill cycle not found');
+    if (cycle.closedAt) throw new ApiError(409, 'CYCLE_CLOSED', 'El ciclo ya está cerrado');
+    const settings = await settingsFor(tx, tenant.organizationId);
+    const purchasedOn = dateOnly(input.purchased_on);
+
+    const purchase = await tx.externalPurchase.create({
+      data: {
+        organizationId: tenant.organizationId,
+        treatmentId: cycle.treatmentId,
+        quantity: input.quantity,
+        presentation: null,
+        purchasedOn,
+        place: input.place ?? null,
+        notes: input.notes ?? null,
+        recordedBy: tenant.userId,
+      } as Prisma.ExternalPurchaseUncheckedCreateInput,
+    });
+    await tx.inventoryEntry.create({
+      data: {
+        organizationId: tenant.organizationId,
+        treatmentId: cycle.treatmentId,
+        type: 'external_purchase',
+        quantityDelta: input.quantity,
+        externalPurchaseId: purchase.id,
+        recordedBy: tenant.userId,
+      } as Prisma.InventoryEntryUncheckedCreateInput,
+    });
+
+    const delivered = input.outcome === 'delivered';
+    // Solo se extiende la cobertura si el paciente recibió el medicamento.
+    const coverageEndOn = delivered
+      ? calculateCoverageEndOn({
+        startDate: cycle.treatment.startDate,
+        quantityPerCycle: cycle.treatment.quantityPerCycle.toString(),
+        ...await effectiveDoseRate(tx, cycle.treatmentId, cycle.treatment),
+        lastDeliveryOn: purchasedOn,
+        lastDeliveryQuantity: input.quantity,
+        coverageManuallyAdjusted: false,
+      })
+      : null;
+    if (coverageEndOn) {
+      await tx.treatment.update({
+        where: { organizationId_id: { organizationId: tenant.organizationId, id: cycle.treatmentId } },
+        data: {
+          lastDeliveryOn: purchasedOn,
+          coverageEndOn,
+          coverageManuallyAdjusted: false,
+          coverageAdjustReason: null,
+        },
+      });
+    }
+
+    const closed = await tx.refillCycle.update({
+      where: { organizationId_id: { organizationId: tenant.organizationId, id: cycle.id } },
+      data: {
+        status: input.outcome,
+        closedAt: new Date(),
+        version: { increment: 1 },
+      },
+    });
+
+    let nextCycle = null;
+    if (coverageEndOn) {
+      nextCycle = await tx.refillCycle.create({
+        data: {
+          organizationId: tenant.organizationId,
+          treatmentId: cycle.treatmentId,
+          branchId: cycle.branchId,
+          status: 'to_notify',
+          expectedOn: coverageEndOn,
+          expectedQuantity: cycle.treatment.quantityPerCycle,
+          suggestedNoticeOn: subtractDays(coverageEndOn, settings.noticeLeadDays),
+        } as Prisma.RefillCycleUncheckedCreateInput,
+      });
+    }
+
+    await tx.activity.create({
+      data: {
+        organizationId: tenant.organizationId,
+        patientId: cycle.treatment.patientId,
+        treatmentId: cycle.treatmentId,
+        cycleId: cycle.id,
+        type: 'external_purchase_recorded',
+        body: input.notes ?? '',
+        metadata: {
+          external_purchase_id: purchase.id,
+          quantity: input.quantity,
+          place: input.place ?? null,
+          cycle_outcome: input.outcome,
+          next_cycle_id: nextCycle?.id ?? null,
+        },
+        authorId: tenant.userId,
+      },
+    });
+    await record(tx, {
+      organizationId: tenant.organizationId,
+      actorId: tenant.userId,
+      action: 'cycle.close_external',
+      subjectId: cycle.id,
+      metadata: { outcome: input.outcome },
+    });
+    return { cycle: closed, purchase, next_cycle: nextCycle };
+  });
+  res.status(201).json(result);
+});
+
 cyclesRouter.post('/:id/move', validateParams(cycleParams), validateBody(cycleMoveInput), async (req, res) => {
   const tenant = req.tenant!;
   requirePermission(tenant.role, 'cycle:move');

@@ -46,6 +46,7 @@ const cardInclude = {
       coverageEndOn: true,
       coverageManuallyAdjusted: true,
       prescriptionExpiresOn: true,
+      lastDeliveryOn: true,
       patient: { select: { id: true, fullName: true } },
       medication: {
         select: {
@@ -114,6 +115,7 @@ export function presentCard(
       coverageEndOn: treatment.coverageEndOn,
       coverageManuallyAdjusted: treatment.coverageManuallyAdjusted,
       prescriptionExpiresOn: treatment.prescriptionExpiresOn,
+      lastDeliveryOn: treatment.lastDeliveryOn,
     },
     { status: cycle.status, hasDelivery: cycle._count.deliveries > 0 },
     today,

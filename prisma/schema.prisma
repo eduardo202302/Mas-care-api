@@ -151,6 +151,7 @@ enum ContactChannel {
   call
   sms
   telegram
+  email
 }
 
 enum OrganizationStatus {
@@ -184,6 +185,13 @@ enum ActivityType {
   automation
   email
   meeting
+  dose_taken
+  dose_skipped
+  dose_rescheduled
+  dose_corrected
+  external_purchase_recorded
+  inventory_adjusted
+  low_inventory_alert
 }
 
 model PatientCaregiver {
@@ -247,22 +255,23 @@ model Medication {
 }
 
 model Doctor {
-  id             String                @id @default(cuid())
-  organizationId String                @map("organization_id")
-  firstName      String                @map("first_name")
-  lastName       String                @map("last_name")
-  licenseNumber  String?               @map("license_number")
-  phone          String?
-  email          String?
-  notes          String?               @db.Text
-  isActive       Boolean               @default(true) @map("is_active")
-  createdAt      DateTime              @default(now()) @map("created_at")
-  updatedAt      DateTime              @updatedAt @map("updated_at")
-  organization   Organization          @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  specialties    DoctorSpecialty[]
-  medicalCenters DoctorMedicalCenter[]
-  patients       PatientDoctor[]
-  numericId      BigInt                @unique @default(dbgenerated("nextval('global_numeric_id_seq'::regclass)")) @map("numeric_id")
+  id                   String                @id @default(cuid())
+  organizationId       String                @map("organization_id")
+  firstName            String                @map("first_name")
+  lastName             String                @map("last_name")
+  licenseNumber        String?               @map("license_number")
+  phone                String?
+  email                String?
+  notes                String?               @db.Text
+  isActive             Boolean               @default(true) @map("is_active")
+  createdAt            DateTime              @default(now()) @map("created_at")
+  updatedAt            DateTime              @updatedAt @map("updated_at")
+  organization         Organization          @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  specialties          DoctorSpecialty[]
+  medicalCenters       DoctorMedicalCenter[]
+  patients             PatientDoctor[]
+  prescribedTreatments Treatment[]           @relation("TreatmentPrescriber")
+  numericId            BigInt                @unique @default(dbgenerated("nextval('global_numeric_id_seq'::regclass)")) @map("numeric_id")
 
   @@unique([organizationId, id])
   @@index([organizationId, isActive])
@@ -501,6 +510,7 @@ enum TaskType {
   call
   renew_prescription
   prepare_delivery
+  dose_followup
   other
 }
 
@@ -521,6 +531,7 @@ enum MessageChannel {
   whatsapp
   call
   telegram
+  email
 }
 
 model Treatment {
@@ -530,6 +541,13 @@ model Treatment {
   medicationId             String                     @map("medication_id")
   branchId                 String                     @map("branch_id")
   name                     String?
+  /**
+   * Groups treatments created together from one "add medications" session in
+   * the patient's health profile (one Treatment per medication still, see
+   * the 1 Treatment : 1 Medication FK above - this is purely a display/query
+   * grouping, generated client-side once per session, not a new relation).
+   */
+  prescriptionGroupId      String?                    @map("prescription_group_id")
   responsibleUserId        String?                    @map("responsible_user_id")
   dosePerIntake            Decimal                    @map("dose_per_intake") @db.Decimal(8, 3)
   intakesPerDay            Decimal                    @map("intakes_per_day") @db.Decimal(6, 3)
@@ -537,8 +555,11 @@ model Treatment {
   startDate                DateTime                   @map("start_date") @db.Date
   endDate                  DateTime?                  @map("end_date") @db.Date
   prescriberName           String?                    @map("prescriber_name")
+  prescriberDoctorId       String?                    @map("prescriber_doctor_id")
+  prescriberDoctor         Doctor?                    @relation("TreatmentPrescriber", fields: [prescriberDoctorId], references: [id], onDelete: SetNull)
   prescriptionExpiresOn    DateTime?                  @map("prescription_expires_on") @db.Date
-  status                   TreatmentStatus            @default(active)
+  prescriptionDocumentPath String?                    @map("prescription_document_path")
+  status                   TreatmentStatus           @default(active)
   statusReason             String?                    @map("status_reason") @db.Text
   statusChangedAt          DateTime?                  @map("status_changed_at")
   lastDeliveryOn           DateTime?                  @map("last_delivery_on") @db.Date
@@ -548,6 +569,7 @@ model Treatment {
   notes                    String?                    @db.Text
   customValues             Json                       @default("{}") @map("custom_values")
   automationPaused         Boolean                    @default(false) @map("automation_paused")
+  lowInventoryThreshold    Decimal?                   @map("low_inventory_threshold") @db.Decimal(10, 3)
   createdAt                DateTime                   @default(now()) @map("created_at")
   updatedAt                DateTime                   @updatedAt @map("updated_at")
   organization             Organization               @relation(fields: [organizationId], references: [id], onDelete: Cascade)
@@ -562,6 +584,10 @@ model Treatment {
   incidents                Incident[]
   outboxMessages           OutboxMessage[]
   transferLines            PatientTransferTreatment[]
+  doseSchedules            DoseSchedule[]
+  doseLogs                 DoseLog[]
+  externalPurchases        ExternalPurchase[]
+  inventoryEntries         InventoryEntry[]
   numericId                BigInt                     @unique @default(dbgenerated("nextval('global_numeric_id_seq'::regclass)")) @map("numeric_id")
 
   @@unique([organizationId, id])
@@ -572,6 +598,8 @@ model Treatment {
   @@index([organizationId, coverageEndOn])
   @@index([organizationId, branchId, coverageEndOn])
   @@index([organizationId, prescriptionExpiresOn])
+  @@index([organizationId, prescriberDoctorId])
+  @@index([organizationId, prescriptionGroupId])
   @@map("treatments")
 }
 
@@ -739,6 +767,7 @@ enum IncidentType {
   out_of_stock
   patient_no_response
   patient_reported
+  dose_overdue
 }
 
 enum IncidentStatus {
@@ -782,25 +811,26 @@ model Incident {
 }
 
 model Delivery {
-  id              String       @id @default(cuid())
-  organizationId  String       @map("organization_id")
-  treatmentId     String       @map("treatment_id")
-  cycleId         String       @map("cycle_id")
-  branchId        String       @map("branch_id")
-  quantity        Decimal      @db.Decimal(10, 2)
-  deliveredOn     DateTime     @map("delivered_on") @db.Date
-  deliveredBy     String       @map("delivered_by")
-  pickedUpBy      PickedUpBy   @map("picked_up_by")
-  pickedUpByName  String?      @map("picked_up_by_name")
-  notes           String?      @db.Text
-  idempotencyKey  String?      @map("idempotency_key")
-  createdAt       DateTime     @default(now()) @map("created_at")
-  organization    Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  treatment       Treatment    @relation(fields: [treatmentId], references: [id], onDelete: Cascade)
-  cycle           RefillCycle  @relation(fields: [cycleId], references: [id], onDelete: Restrict)
-  branch          Branch       @relation(fields: [branchId], references: [id], onDelete: Restrict)
-  deliveredByUser User         @relation("DeliveryRecordedBy", fields: [deliveredBy], references: [id], onDelete: Restrict)
-  numericId       BigInt       @unique @default(dbgenerated("nextval('global_numeric_id_seq'::regclass)")) @map("numeric_id")
+  id               String           @id @default(cuid())
+  organizationId   String           @map("organization_id")
+  treatmentId      String           @map("treatment_id")
+  cycleId          String           @map("cycle_id")
+  branchId         String           @map("branch_id")
+  quantity         Decimal          @db.Decimal(10, 2)
+  deliveredOn      DateTime         @map("delivered_on") @db.Date
+  deliveredBy      String           @map("delivered_by")
+  pickedUpBy       PickedUpBy       @map("picked_up_by")
+  pickedUpByName   String?          @map("picked_up_by_name")
+  notes            String?          @db.Text
+  idempotencyKey   String?          @map("idempotency_key")
+  createdAt        DateTime         @default(now()) @map("created_at")
+  organization     Organization     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  treatment        Treatment        @relation(fields: [treatmentId], references: [id], onDelete: Cascade)
+  cycle            RefillCycle      @relation(fields: [cycleId], references: [id], onDelete: Restrict)
+  branch           Branch           @relation(fields: [branchId], references: [id], onDelete: Restrict)
+  deliveredByUser  User             @relation("DeliveryRecordedBy", fields: [deliveredBy], references: [id], onDelete: Restrict)
+  inventoryEntries InventoryEntry[]
+  numericId        BigInt           @unique @default(dbgenerated("nextval('global_numeric_id_seq'::regclass)")) @map("numeric_id")
 
   @@unique([organizationId, id])
   @@unique([organizationId, idempotencyKey])
@@ -808,6 +838,188 @@ model Delivery {
   @@index([organizationId, cycleId])
   @@index([organizationId, branchId])
   @@map("deliveries")
+}
+
+enum DoseLogStatus {
+  scheduled
+  taken
+  skipped
+  rescheduled
+}
+
+/**
+ * How a DoseSchedule version repeats. `daily` (default) applies `times` to
+ * every calendar day, exactly like before this enum existed - the only
+ * backward-compatible choice, since every existing row has no explicit
+ * frequency type. `interval` steps from `anchorAt` by `intervalHours`
+ * (covers "every N hours" when N does not evenly divide 24, and every "every
+ * N days" pattern, including every 30 days, as intervalHours = N*24).
+ * `weekly` applies `times` only on the selected `weekdays`.
+ * `monthly` applies `times` only on the selected `monthdays` (1-31).
+ */
+enum DoseFrequencyType {
+  daily
+  interval
+  weekly
+  monthly
+
+  @@map("dose_frequency_type")
+}
+
+enum SkipReasonCode {
+  patient_unavailable
+  side_effects
+  out_of_stock
+  medical_decision
+  other
+}
+
+enum InventoryEntryType {
+  initial
+  external_purchase
+  pharmacy_delivery
+  manual_adjustment
+  dose_consumption
+  reversal
+}
+
+/**
+ * One versioned dosing schedule for a treatment. Changing the dose or times
+ * never edits a row in place: the active version is closed (effectiveTo) and
+ * a new one is created, so past DoseLog rows keep pointing at the version
+ * under which they were generated. Only a dose/time change (not the first
+ * schedule of a treatment) requires authorizedBy/authorizationNote/
+ * authorizationDocumentPath.
+ */
+model DoseSchedule {
+  id                        String       @id @default(cuid())
+  organizationId            String       @map("organization_id")
+  treatmentId               String       @map("treatment_id")
+  dosePerIntake             Decimal      @map("dose_per_intake") @db.Decimal(8, 3)
+  times                     String[]     @map("times")
+  frequencyType             DoseFrequencyType @default(daily) @map("frequency_type")
+  intervalHours             Int?         @map("interval_hours")
+  anchorAt                  DateTime?    @map("anchor_at")
+  weekdays                  Int[]        @default([]) @map("weekdays")
+  monthdays                 Int[]        @default([]) @map("monthdays")
+  effectiveFrom             DateTime     @map("effective_from") @db.Date
+  effectiveTo               DateTime?    @map("effective_to") @db.Date
+  reason                    String?      @db.Text
+  authorizedBy              String?      @map("authorized_by")
+  authorizationNote         String?      @map("authorization_note") @db.Text
+  authorizationDocumentPath String?      @map("authorization_document_path")
+  createdBy                 String       @map("created_by")
+  createdAt                 DateTime     @default(now()) @map("created_at")
+  organization              Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  treatment                 Treatment    @relation(fields: [treatmentId], references: [id], onDelete: Cascade)
+  creator                   User         @relation("DoseScheduleCreatedBy", fields: [createdBy], references: [id], onDelete: Restrict)
+  doseLogs                  DoseLog[]
+  numericId                 BigInt       @unique @default(dbgenerated("nextval('global_numeric_id_seq'::regclass)")) @map("numeric_id")
+
+  @@unique([organizationId, id])
+  @@index([organizationId, treatmentId, effectiveFrom])
+  @@map("dose_schedules")
+}
+
+/**
+ * One materialized occurrence of a scheduled dose. Generated ~48h ahead by a
+ * job (never computed on the fly) so each occurrence has a real lifecycle a
+ * person can act on. Stays `scheduled` indefinitely if nobody logs it - it is
+ * never auto-marked skipped, and never consumes inventory while scheduled.
+ */
+model DoseLog {
+  id               String           @id @default(cuid())
+  organizationId   String           @map("organization_id")
+  treatmentId      String           @map("treatment_id")
+  doseScheduleId   String           @map("dose_schedule_id")
+  scheduledFor     DateTime         @map("scheduled_for")
+  status           DoseLogStatus    @default(scheduled)
+  nominalQuantity  Decimal          @map("nominal_quantity") @db.Decimal(8, 3)
+  actualQuantity   Decimal?         @map("actual_quantity") @db.Decimal(8, 3)
+  skipReasonCode   SkipReasonCode?  @map("skip_reason_code")
+  skipReasonNote   String?          @map("skip_reason_note") @db.Text
+  rescheduledFor   DateTime?        @map("rescheduled_for")
+  recordedBy       String?          @map("recorded_by")
+  recordedAt       DateTime?        @map("recorded_at")
+  correctedBy      String?          @map("corrected_by")
+  correctedAt      DateTime?        @map("corrected_at")
+  correctionNote   String?          @map("correction_note") @db.Text
+  inventoryEntryId String?          @map("inventory_entry_id")
+  createdAt        DateTime         @default(now()) @map("created_at")
+  updatedAt        DateTime         @updatedAt @map("updated_at")
+  organization     Organization     @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  treatment        Treatment        @relation(fields: [treatmentId], references: [id], onDelete: Cascade)
+  doseSchedule     DoseSchedule     @relation(fields: [doseScheduleId], references: [id], onDelete: Cascade)
+  recordedByUser   User?            @relation("DoseLogRecordedBy", fields: [recordedBy], references: [id], onDelete: SetNull)
+  correctedByUser  User?            @relation("DoseLogCorrectedBy", fields: [correctedBy], references: [id], onDelete: SetNull)
+  inventoryEntries InventoryEntry[]
+  numericId        BigInt           @unique @default(dbgenerated("nextval('global_numeric_id_seq'::regclass)")) @map("numeric_id")
+
+  @@unique([organizationId, id])
+  @@unique([organizationId, doseScheduleId, scheduledFor])
+  @@index([organizationId, treatmentId, scheduledFor])
+  @@index([organizationId, treatmentId, status])
+  @@map("dose_logs")
+}
+
+/**
+ * Purchase made outside the pharmacy. Always generates one InventoryEntry (type=external_purchase) on creation.
+ */
+model ExternalPurchase {
+  id             String          @id @default(cuid())
+  organizationId String          @map("organization_id")
+  treatmentId    String          @map("treatment_id")
+  quantity       Decimal         @db.Decimal(10, 3)
+  presentation   String?
+  purchasedOn    DateTime        @map("purchased_on") @db.Date
+  place          String?
+  notes          String?         @db.Text
+  recordedBy     String          @map("recorded_by")
+  createdAt      DateTime        @default(now()) @map("created_at")
+  organization   Organization    @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  treatment      Treatment       @relation(fields: [treatmentId], references: [id], onDelete: Cascade)
+  recordedByUser User            @relation("ExternalPurchaseRecordedBy", fields: [recordedBy], references: [id], onDelete: Restrict)
+  inventoryEntry InventoryEntry?
+  numericId      BigInt          @unique @default(dbgenerated("nextval('global_numeric_id_seq'::regclass)")) @map("numeric_id")
+
+  @@unique([organizationId, id])
+  @@index([organizationId, treatmentId, purchasedOn])
+  @@map("external_purchases")
+}
+
+/**
+ * Append-only ledger: the balance for a treatment is sum(quantityDelta), it
+ * is never stored as a mutable counter. A bad dose log is never deleted -
+ * correcting it creates a new entry (type=reversal) linked back via
+ * reversedEntryId, so the balance can be reconstructed at any past instant.
+ */
+model InventoryEntry {
+  id                 String             @id @default(cuid())
+  organizationId     String             @map("organization_id")
+  treatmentId        String             @map("treatment_id")
+  type               InventoryEntryType
+  quantityDelta      Decimal            @map("quantity_delta") @db.Decimal(10, 3)
+  deliveryId         String?            @map("delivery_id")
+  externalPurchaseId String?            @unique @map("external_purchase_id")
+  doseLogId          String?            @map("dose_log_id")
+  reversedEntryId    String?            @map("reversed_entry_id")
+  note               String?            @db.Text
+  recordedBy         String             @map("recorded_by")
+  createdAt          DateTime           @default(now()) @map("created_at")
+  organization       Organization       @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  treatment          Treatment          @relation(fields: [treatmentId], references: [id], onDelete: Cascade)
+  delivery           Delivery?          @relation(fields: [deliveryId], references: [id], onDelete: SetNull)
+  externalPurchase   ExternalPurchase?  @relation(fields: [externalPurchaseId], references: [id], onDelete: SetNull)
+  doseLog            DoseLog?           @relation(fields: [doseLogId], references: [id], onDelete: SetNull)
+  reversedEntry      InventoryEntry?    @relation("InventoryEntryReversal", fields: [reversedEntryId], references: [id], onDelete: SetNull)
+  reversalEntries    InventoryEntry[]   @relation("InventoryEntryReversal")
+  recordedByUser     User               @relation("InventoryEntryRecordedBy", fields: [recordedBy], references: [id], onDelete: Restrict)
+  numericId          BigInt             @unique @default(dbgenerated("nextval('global_numeric_id_seq'::regclass)")) @map("numeric_id")
+
+  @@unique([organizationId, id])
+  @@index([organizationId, treatmentId, createdAt])
+  @@index([organizationId, doseLogId])
+  @@map("inventory_entries")
 }
 
 /**
@@ -951,24 +1163,24 @@ enum DealPriority {
 }
 
 model Deal {
-  id             String       @id @default(cuid())
-  organizationId String       @map("organization_id")
+  id             String         @id @default(cuid())
+  organizationId String         @map("organization_id")
   name           String
-  pipeline       DealPipeline @default(sales)
-  stage          DealStage    @default(appointment_scheduled)
-  dealType       DealType     @default(new_business) @map("deal_type")
-  priority       DealPriority @default(medium)
-  amount         Decimal?     @db.Decimal(14, 2)
-  closeDate      DateTime?    @map("close_date") @db.Date
-  ownerUserId    String?      @map("owner_user_id")
-  contactId      String?      @map("contact_id")
-  createdAt      DateTime     @default(now()) @map("created_at")
-  updatedAt      DateTime     @updatedAt @map("updated_at")
+  pipeline       DealPipeline   @default(sales)
+  stage          DealStage      @default(appointment_scheduled)
+  dealType       DealType       @default(new_business) @map("deal_type")
+  priority       DealPriority   @default(medium)
+  amount         Decimal?       @db.Decimal(14, 2)
+  closeDate      DateTime?      @map("close_date") @db.Date
+  ownerUserId    String?        @map("owner_user_id")
+  contactId      String?        @map("contact_id")
+  createdAt      DateTime       @default(now()) @map("created_at")
+  updatedAt      DateTime       @updatedAt @map("updated_at")
   organization   Organization   @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   owner          User?          @relation(fields: [ownerUserId], references: [id], onDelete: SetNull)
   contact        Patient?       @relation(fields: [contactId], references: [id], onDelete: SetNull)
   lineItems      DealLineItem[]
-  numericId      BigInt       @unique @default(dbgenerated("nextval('global_numeric_id_seq'::regclass)")) @map("numeric_id")
+  numericId      BigInt         @unique @default(dbgenerated("nextval('global_numeric_id_seq'::regclass)")) @map("numeric_id")
 
   @@unique([organizationId, id])
   @@index([organizationId, createdAt])
@@ -1100,43 +1312,48 @@ model ImportJob {
 }
 
 model User {
-  id                    String                @id
-  name                  String
-  email                 String
-  emailVerified         Boolean               @default(false)
-  image                 String?
-  username              String?               @unique
-  phone                 String?
-  passwordPinEncrypted  String?               @map("password_pin_encrypted")
-  passwordPinAttempts   Int                   @default(0) @map("password_pin_attempts")
-  passwordPinLockedAt   DateTime?             @map("password_pin_locked_at")
-  passwordPinUpdatedAt  DateTime?             @map("password_pin_updated_at")
-  createdAt             DateTime              @default(now())
-  updatedAt             DateTime              @updatedAt
-  sessions              Session[]
-  accounts              Account[]
-  members               Member[]
-  invitations           Invitation[]
-  branchMemberships     BranchMember[]
-  responsiblePatients   Patient[]             @relation("PatientResponsible")
-  createdPatients       Patient[]             @relation("PatientCreator")
-  recordedConsents      PatientConsent[]
-  recordedConditions    PatientCondition[]
-  responsibleTreatments Treatment[]           @relation("TreatmentResponsible")
-  recordedDeliveries    Delivery[]            @relation("DeliveryRecordedBy")
-  activities            Activity[]
-  companyActivities     CompanyActivity[]
-  ownedDeals            Deal[]
-  savedViews            SavedView[]
-  assignedTasks         Task[]                @relation("TaskAssignee")
-  completedTasks        Task[]                @relation("TaskCompletedBy")
-  importJobs            ImportJob[]
-  passwordResetPins     PasswordResetPin[]
-  stockMarksReviewed    MedicationStockMark[] @relation("StockMarkReviewer")
-  assignedIncidents     Incident[]            @relation("IncidentAssignee")
-  createdIncidents      Incident[]            @relation("IncidentCreator")
-  createdTransfers      PatientTransfer[]     @relation("PatientTransferCreatedBy")
-  numericId             BigInt                @unique @default(dbgenerated("nextval('global_numeric_id_seq'::regclass)")) @map("numeric_id")
+  id                        String                @id
+  name                      String
+  email                     String
+  emailVerified             Boolean               @default(false)
+  image                     String?
+  username                  String?               @unique
+  phone                     String?
+  passwordPinEncrypted      String?               @map("password_pin_encrypted")
+  passwordPinAttempts       Int                   @default(0) @map("password_pin_attempts")
+  passwordPinLockedAt       DateTime?             @map("password_pin_locked_at")
+  passwordPinUpdatedAt      DateTime?             @map("password_pin_updated_at")
+  createdAt                 DateTime              @default(now())
+  updatedAt                 DateTime              @updatedAt
+  sessions                  Session[]
+  accounts                  Account[]
+  members                   Member[]
+  invitations               Invitation[]
+  branchMemberships         BranchMember[]
+  responsiblePatients       Patient[]             @relation("PatientResponsible")
+  createdPatients           Patient[]             @relation("PatientCreator")
+  recordedConsents          PatientConsent[]
+  recordedConditions        PatientCondition[]
+  responsibleTreatments     Treatment[]           @relation("TreatmentResponsible")
+  recordedDeliveries        Delivery[]            @relation("DeliveryRecordedBy")
+  activities                Activity[]
+  companyActivities         CompanyActivity[]
+  ownedDeals                Deal[]
+  savedViews                SavedView[]
+  assignedTasks             Task[]                @relation("TaskAssignee")
+  completedTasks            Task[]                @relation("TaskCompletedBy")
+  importJobs                ImportJob[]
+  passwordResetPins         PasswordResetPin[]
+  stockMarksReviewed        MedicationStockMark[] @relation("StockMarkReviewer")
+  assignedIncidents         Incident[]            @relation("IncidentAssignee")
+  createdIncidents          Incident[]            @relation("IncidentCreator")
+  createdTransfers          PatientTransfer[]     @relation("PatientTransferCreatedBy")
+  createdDoseSchedules      DoseSchedule[]        @relation("DoseScheduleCreatedBy")
+  recordedDoseLogs          DoseLog[]             @relation("DoseLogRecordedBy")
+  correctedDoseLogs         DoseLog[]             @relation("DoseLogCorrectedBy")
+  recordedExternalPurchases ExternalPurchase[]    @relation("ExternalPurchaseRecordedBy")
+  recordedInventoryEntries  InventoryEntry[]      @relation("InventoryEntryRecordedBy")
+  numericId                 BigInt                @unique @default(dbgenerated("nextval('global_numeric_id_seq'::regclass)")) @map("numeric_id")
 
   @@unique([email])
   @@map("user")
@@ -1273,6 +1490,10 @@ model Organization {
   healthConditions   HealthCondition[]
   companyActivities  CompanyActivity[]
   deals              Deal[]
+  doseSchedules      DoseSchedule[]
+  doseLogs           DoseLog[]
+  externalPurchases  ExternalPurchase[]
+  inventoryEntries   InventoryEntry[]
   numericId          BigInt              @unique @default(dbgenerated("nextval('global_numeric_id_seq'::regclass)")) @map("numeric_id")
 
   @@unique([slug])

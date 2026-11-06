@@ -11,6 +11,7 @@ const tenantModels = new Set([
   'MedicationStockMark', 'Incident', 'OutboxMessage', 'Notice',
   'PatientTransfer', 'PatientTransferTreatment', 'AutomationRule', 'AutomationRun', 'Pipeline', 'PipelineStage', 'CustomProperty', 'WhatsappInbound', 'WhatsappAccount', 'TelegramAccount', 'TelegramLink', 'TelegramLinkToken',
   'Doctor', 'MedicalSpecialty', 'DoctorSpecialty', 'MedicalCenter', 'DoctorMedicalCenter', 'HealthCondition', 'PatientDoctor', 'PatientCondition',
+  'DoseSchedule', 'DoseLog', 'ExternalPurchase', 'InventoryEntry',
 ]);
 const whereOperations = new Set([
   'findFirst', 'findFirstOrThrow', 'findMany', 'findUnique', 'findUniqueOrThrow',

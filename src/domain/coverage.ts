@@ -45,6 +45,8 @@ export type CoverageTreatment = {
   coverageEndOn: Date | null;
   coverageManuallyAdjusted: boolean;
   prescriptionExpiresOn: Date | null;
+  /** Última entrega registrada; sirve para silenciar el aviso de receta. */
+  lastDeliveryOn?: Date | string | null;
 };
 
 export type CoverageCycle = {
@@ -160,8 +162,10 @@ export function daysRemaining(treatment: CoverageTreatment, today: Date): number
 }
 
 /**
- * Independent prescription warning. Finished treatments are excluded because
- * they no longer need a renewed prescription.
+ * Aviso independiente de receta. Un tratamiento finalizado no renueva receta y
+ * una entrega reciente ya resolvió la reposición: el aviso se calla mientras
+ * quede cobertura por encima de la ventana de aviso y reaparece cuando se
+ * acerca la próxima reposición.
  */
 export function prescriptionFlag(
   treatment: CoverageTreatment,
@@ -170,7 +174,25 @@ export function prescriptionFlag(
 ): boolean {
   if (treatment.status === 'finished' || !treatment.prescriptionExpiresOn) return false;
   const warningLimit = addDays(today, settings.prescriptionWarningDays);
-  return toDateOnly(treatment.prescriptionExpiresOn).getTime() <= warningLimit.getTime();
+  if (toDateOnly(treatment.prescriptionExpiresOn).getTime() > warningLimit.getTime()) return false;
+  if (treatment.lastDeliveryOn) {
+    const remaining = daysRemaining(treatment, today);
+    if (remaining !== null && remaining > settings.prescriptionWarningDays) return false;
+  }
+  return true;
+}
+
+/**
+ * A prescription authorises deliveries through its own expiry day: it is only
+ * expired once that calendar day has already passed. Treatments without an
+ * expiry date are never blocked (the date is optional).
+ */
+export function isPrescriptionExpired(
+  treatment: { prescriptionExpiresOn: Date | string | null },
+  today: Date,
+): boolean {
+  if (!treatment.prescriptionExpiresOn) return false;
+  return toDateOnly(treatment.prescriptionExpiresOn).getTime() < toDateOnly(today).getTime();
 }
 
 /**

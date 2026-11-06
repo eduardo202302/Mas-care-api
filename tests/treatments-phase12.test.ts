@@ -240,3 +240,56 @@ describe.skipIf(!enabled)('phase 1.2 treatment coverage APIs', () => {
     })).resolves.toEqual(expect.any(String));
   });
 });
+
+describe.skipIf(!enabled)('prescription_group_id (grouping several medications added together)', () => {
+  it('lets the frontend group several treatments created in one session, and filters by it', async () => {
+    const { agent: owner, context } = await login('owner');
+    const suffix = crypto.randomUUID();
+    const branchId = context.branches[0]!.id;
+    const patient = await owner.post('/api/v1/patients').send({
+      primaryBranchId: branchId,
+      fullName: `Group patient ${suffix}`,
+      documentId: `GRP-${suffix}`,
+      phone: `722${suffix.slice(0, 7)}`,
+      responsibleUserId: context.user.id,
+    }).expect(201);
+    const groupId = crypto.randomUUID();
+    const medicationIds: string[] = [];
+    for (const name of ['Amoxicilina', 'Pepto-Bismol']) {
+      const medication = await owner.post('/api/v1/medications').send({
+        genericName: `${name} ${suffix}`,
+        presentation: '20 mg tablets',
+        unitsPerPackage: 30,
+      }).expect(201);
+      medicationIds.push(medication.body.id as string);
+      await owner.post('/api/v1/treatments').send({
+        patient_id: patient.body.patient.id,
+        medication_id: medication.body.id,
+        branch_id: branchId,
+        responsible_user_id: context.user.id,
+        dose_per_intake: 1,
+        intakes_per_day: 3,
+        quantity_per_cycle: 30,
+        start_date: iso(todayOnly),
+        prescription_group_id: groupId,
+      }).expect(201);
+    }
+    // An unrelated treatment for the same patient, outside the group.
+    const otherMedication = await owner.post('/api/v1/medications').send({
+      genericName: `Otro ${suffix}`, presentation: '5 mg tablets', unitsPerPackage: 30,
+    }).expect(201);
+    await owner.post('/api/v1/treatments').send({
+      patient_id: patient.body.patient.id, medication_id: otherMedication.body.id, branch_id: branchId,
+      responsible_user_id: context.user.id, dose_per_intake: 1, intakes_per_day: 1, quantity_per_cycle: 30,
+      start_date: iso(todayOnly),
+    }).expect(201);
+
+    const grouped = await owner.get(`/api/v1/treatments?prescription_group_id=${groupId}`).expect(200);
+    expect(grouped.body.data).toHaveLength(2);
+    expect(grouped.body.data.map((row: { medicationId: string }) => row.medicationId).sort())
+      .toEqual([...medicationIds].sort());
+
+    const all = await owner.get(`/api/v1/treatments?patient_id=${patient.body.patient.id}`).expect(200);
+    expect(all.body.data).toHaveLength(3);
+  });
+});

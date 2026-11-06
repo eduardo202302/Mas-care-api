@@ -120,6 +120,7 @@ const Patient = registry.register('Patient', z.object({
   phoneHasWhatsapp: z.boolean(), email: z.string().nullable(), addressDetails: z.record(z.string(), z.unknown()).nullable(),
   preferredChannel: z.enum(['whatsapp', 'call', 'sms']), reminderConsent: z.boolean(), reminderConsentAt: z.date().nullable(),
   careNotes: z.string().nullable(), responsibleUserId: z.string().nullable(), createdBy: z.string(), createdAt: z.date(), archivedAt: z.date().nullable(),
+  primaryConditionName: z.string().nullable().optional(),
 }));
 const PatientCreate = registry.register('PatientCreate', patientCreate);
 const PatientDuplicate = registry.register('PatientDuplicate', z.object({ id: z.string(), fullName: z.string(), documentId: z.string().nullable(), phone: z.string().nullable(), primaryBranchId: z.string() }));
@@ -160,15 +161,19 @@ const UserPin = registry.register('UserPin', z.object({
 const Treatment = registry.register('Treatment', z.object({
   id: z.string(), numericId: z.string(), organizationId: z.string(), patientId: z.string(), medicationId: z.string(), branchId: z.string(),
   name: z.string().nullable(),
+  prescriptionGroupId: z.string().nullable(),
   responsibleUserId: z.string().nullable(), dosePerIntake: z.union([z.string(), z.number()]),
   intakesPerDay: z.union([z.string(), z.number()]), quantityPerCycle: z.union([z.string(), z.number()]),
   startDate: z.date(), endDate: z.date().nullable(), prescriberName: z.string().nullable(),
+  prescriberDoctorId: z.string().nullable(),
   prescriptionExpiresOn: z.date().nullable(), status: z.enum(['active', 'paused', 'finished']),
   statusReason: z.string().nullable(), statusChangedAt: z.date().nullable(), lastDeliveryOn: z.date().nullable(),
   coverageEndOn: z.date().nullable(), coverageManuallyAdjusted: z.boolean(), coverageAdjustReason: z.string().nullable(),
   notes: z.string().nullable(), createdAt: z.date(), updatedAt: z.date(),
   derived_status: z.enum(['vencido', 'vence_pronto', 'retiro_pendiente', 'proxima_reposicion', 'al_dia']).nullable(),
   days_remaining: z.number().nullable(), prescription_flag: z.boolean(),
+  inventory_balance: z.number().nullable(), inventory_balance_real: z.number().nullable(), next_dose_at: z.date().nullable(),
+  days_remaining_real: z.number().nullable(),
 }));
 const TreatmentCreate = registry.register('TreatmentCreate', treatmentCreate);
 const TreatmentPatch = registry.register('TreatmentPatch', treatmentPatch);
@@ -279,6 +284,8 @@ const IncidentId = z.string().min(1).openapi({ param: { name: 'id', in: 'path' }
 
 const BranchId = z.string().min(1).openapi({ param: { name: 'id', in: 'path' }, example: 'clx123branchid' });
 const CaregiverId = z.string().min(1).openapi({ param: { name: 'caregiverId', in: 'path' } });
+const DoseLogId = z.string().min(1).openapi({ param: { name: 'doseLogId', in: 'path' } });
+const DoseScheduleId = z.string().min(1).openapi({ param: { name: 'doseScheduleId', in: 'path' } });
 const ErrorResponse = registry.register('ErrorResponse', z.object({ error: z.object({ code: z.string(), message: z.string(), fields: z.record(z.string(), z.string()).optional(), details: z.unknown().optional() }) }));
 registry.registerComponent('securitySchemes', 'cookieAuth', { type: 'apiKey', in: 'cookie', name: 'better-auth.session_token' });
 
@@ -405,7 +412,7 @@ registry.registerPath({
 registry.registerPath({
   method: 'get', path: '/api/v1/patients', summary: 'Search patients within the active organization', security: [{ cookieAuth: [] }],
   request: { query: PatientListQuery },
-  responses: { 200: { description: 'Paginated patients', content: { 'application/json': { schema: z.object({ data: z.array(Patient.extend({ primaryConditionName: z.string().nullable() })), nextCursor: z.string().nullable(), ...pageMeta }) } } }, 403: { description: 'Forbidden', content: { 'application/json': { schema: ErrorResponse } } } },
+  responses: { 200: { description: 'Paginated patients', content: { 'application/json': { schema: z.object({ data: z.array(Patient.extend({ primaryConditionName: z.string().nullable(), treatmentsCount: z.number().int() })), nextCursor: z.string().nullable(), ...pageMeta }) } } }, 403: { description: 'Forbidden', content: { 'application/json': { schema: ErrorResponse } } } },
 });
 registry.registerPath({
   method: 'post', path: '/api/v1/patients', summary: 'Create a patient and return potential in-organization duplicates', security: [{ cookieAuth: [] }],
@@ -577,7 +584,7 @@ registry.registerPath({ method: 'delete', path: '/api/v1/saved-views/{id}', summ
 registry.registerPath({
   method: 'post', path: '/api/v1/treatments/{id}/deliver', summary: 'Register a delivery, close the current cycle and open the next one', security: [{ cookieAuth: [] }],
   request: { params: z.object({ id: BranchId }), headers: z.object({ 'idempotency-key': z.string().max(200).optional() }), body: { content: { 'application/json': { schema: DeliveryInput } } } },
-  responses: { 201: { description: 'Delivery registered', content: { 'application/json': { schema: z.object({ id: z.string(), coverageEndOn: z.date().nullable(), delivery: z.record(z.string(), z.unknown()), next_cycle: z.record(z.string(), z.unknown()), idempotent_replay: z.boolean() }) } } }, 200: { description: 'Idempotent replay' }, 403: { description: 'Forbidden', content: { 'application/json': { schema: ErrorResponse } } }, 404: { description: 'Treatment not found', content: { 'application/json': { schema: ErrorResponse } } }, 409: { description: 'No open cycle or idempotency conflict', content: { 'application/json': { schema: ErrorResponse } } } },
+  responses: { 201: { description: 'Delivery registered', content: { 'application/json': { schema: z.object({ id: z.string(), coverageEndOn: z.date().nullable(), delivery: z.record(z.string(), z.unknown()), next_cycle: z.record(z.string(), z.unknown()), idempotent_replay: z.boolean() }) } } }, 200: { description: 'Idempotent replay' }, 403: { description: 'Forbidden', content: { 'application/json': { schema: ErrorResponse } } }, 404: { description: 'Treatment not found', content: { 'application/json': { schema: ErrorResponse } } }, 409: { description: 'No open cycle, idempotency conflict or expired prescription (PRESCRIPTION_EXPIRED)', content: { 'application/json': { schema: ErrorResponse } } } },
 });
 registry.registerPath({
   method: 'get', path: '/api/v1/treatments/{id}/notice-preview', summary: 'Render the reminder text without sending it', security: [{ cookieAuth: [] }],
@@ -589,10 +596,94 @@ registry.registerPath({
   request: { params: z.object({ id: BranchId }), body: { content: { 'application/json': { schema: NoticeLoggedInput } } } },
   responses: { 201: { description: 'Activity recorded', content: { 'application/json': { schema: Activity } } }, 403: { description: 'Forbidden', content: { 'application/json': { schema: ErrorResponse } } }, 404: { description: 'Treatment not found', content: { 'application/json': { schema: ErrorResponse } } } },
 });
+
+// --- Dose tracking + inventory ledger ---
+const DoseSchedule = registry.register('DoseSchedule', z.object({
+  id: z.string(), treatmentId: z.string(), dosePerIntake: z.union([z.string(), z.number()]),
+  times: z.array(z.string()),
+  frequencyType: z.enum(['daily', 'interval', 'weekly', 'monthly']),
+  intervalHours: z.number().nullable(),
+  anchorAt: z.date().nullable(),
+  weekdays: z.array(z.number()),
+  monthdays: z.array(z.number()),
+  effectiveFrom: z.date(), effectiveTo: z.date().nullable(),
+  reason: z.string().nullable(), authorizedBy: z.string().nullable(), authorizationNote: z.string().nullable(),
+  authorizationDocumentPath: z.string().nullable(), createdBy: z.string(), createdAt: z.date(),
+}));
+const DoseLogDto = registry.register('DoseLog', z.object({
+  id: z.string(), treatmentId: z.string(), doseScheduleId: z.string(), scheduledFor: z.date(),
+  status: z.enum(['scheduled', 'taken', 'skipped', 'rescheduled']),
+  nominalQuantity: z.union([z.string(), z.number()]), actualQuantity: z.union([z.string(), z.number()]).nullable(),
+  skipReasonCode: z.enum(['patient_unavailable', 'side_effects', 'out_of_stock', 'medical_decision', 'other']).nullable(),
+  skipReasonNote: z.string().nullable(), rescheduledFor: z.date().nullable(),
+  recordedBy: z.string().nullable(), recordedAt: z.date().nullable(),
+  correctedBy: z.string().nullable(), correctedAt: z.date().nullable(), correctionNote: z.string().nullable(),
+}));
+const InventoryEntryDto = registry.register('InventoryEntry', z.object({
+  id: z.string(), treatmentId: z.string(),
+  type: z.enum(['initial', 'external_purchase', 'pharmacy_delivery', 'manual_adjustment', 'dose_consumption', 'reversal']),
+  quantityDelta: z.union([z.string(), z.number()]), note: z.string().nullable(), recordedBy: z.string(), createdAt: z.date(),
+}));
+const InventorySummary = registry.register('InventorySummary', z.object({
+  balance: z.number(), balance_real: z.number(), consumed_unlogged: z.number(),
+  rate_per_day: z.number(), rate_source: z.enum(['actual', 'scheduled']),
+  days_remaining_real: z.number().nullable(), low_inventory_threshold: z.string().nullable(), is_low: z.boolean(),
+  exhausted_on: z.string().nullable(),
+  projection: z.array(z.object({ date: z.string(), units: z.number(), remaining: z.number() })),
+}));
+const ExternalPurchaseDto = registry.register('ExternalPurchase', z.object({
+  id: z.string(), treatmentId: z.string(), quantity: z.union([z.string(), z.number()]),
+  presentation: z.string().nullable(), purchasedOn: z.date(), place: z.string().nullable(),
+  notes: z.string().nullable(), recordedBy: z.string(), createdAt: z.date(),
+}));
+const DoseScheduleCreateDoc = registry.register('DoseScheduleCreateInput', z.object({
+  dose_per_intake: z.number(),
+  frequency_type: z.enum(['daily', 'interval', 'weekly', 'monthly']).default('daily').openapi({ description: "'daily' requires times; 'interval' requires interval_hours+anchor_at; 'weekly' requires times+weekdays; 'monthly' requires times+monthdays" }),
+  times: z.string().openapi({ description: 'Comma-separated HH:mm values, e.g. "08:00,20:00". Required for daily/weekly/monthly.' }).optional(),
+  interval_hours: z.number().int().positive().openapi({ description: 'Required for interval, e.g. 8 (every 8h) or 720 (every 30 days)' }).optional(),
+  anchor_at: z.string().datetime().openapi({ description: 'ISO instant of the first occurrence. Required for interval.' }).optional(),
+  weekdays: z.string().openapi({ description: 'Comma-separated 0-6 values (0=Sunday). Required for weekly.' }).optional(),
+  monthdays: z.string().openapi({ description: 'Comma-separated 1-31 values (days of the month, e.g. "5,10,20"). Required for monthly.' }).optional(),
+  effective_from: z.string(), reason: z.string().nullable().optional(),
+  authorized_by: z.string().nullable().optional(), authorization_note: z.string().nullable().optional(),
+  authorization_document: z.string().openapi({ format: 'binary' }).optional(),
+}));
+const DoseTakeInputDoc = registry.register('DoseTakeInput', z.object({ actual_quantity: z.number().nullable().optional() }));
+const DoseSkipInputDoc = registry.register('DoseSkipInput', z.object({
+  skip_reason_code: z.enum(['patient_unavailable', 'side_effects', 'out_of_stock', 'medical_decision', 'other']),
+  skip_reason_note: z.string().nullable().optional(),
+}));
+const DoseRescheduleInputDoc = registry.register('DoseRescheduleInput', z.object({ rescheduled_for: z.string() }));
+const DoseCorrectInputDoc = registry.register('DoseCorrectInput', z.object({ correction_note: z.string() }));
+const ExternalPurchaseInputDoc = registry.register('ExternalPurchaseInput', z.object({
+  quantity: z.number(), presentation: z.string().nullable().optional(), purchased_on: z.string(),
+  place: z.string().nullable().optional(), notes: z.string().nullable().optional(),
+}));
+const InventoryAdjustInputDoc = registry.register('InventoryAdjustInput', z.object({ quantity_delta: z.number(), note: z.string() }));
+const InventoryThresholdInputDoc = registry.register('InventoryThresholdInput', z.object({ low_inventory_threshold: z.number().nullable() }));
+
+registry.registerPath({ method: 'get', path: '/api/v1/treatments/{id}/dose-schedules', summary: 'List dose schedule versions for a treatment', security: [{ cookieAuth: [] }], request: { params: z.object({ id: BranchId }) }, responses: { 200: { description: 'Dose schedule versions', content: { 'application/json': { schema: z.object({ data: z.array(DoseSchedule) }) } } }, 404: { description: 'Treatment not found', content: { 'application/json': { schema: ErrorResponse } } } } });
+registry.registerPath({ method: 'post', path: '/api/v1/treatments/{id}/dose-schedules', summary: 'Open a new dose schedule version (requires authorization when changing an active one)', security: [{ cookieAuth: [] }], request: { params: z.object({ id: BranchId }), body: { content: { 'multipart/form-data': { schema: DoseScheduleCreateDoc } } } }, responses: { 201: { description: 'New dose schedule version', content: { 'application/json': { schema: DoseSchedule } } }, 400: { description: 'Missing authorization for a dose change', content: { 'application/json': { schema: ErrorResponse } } }, 404: { description: 'Treatment not found', content: { 'application/json': { schema: ErrorResponse } } } } });
+registry.registerPath({ method: 'get', path: '/api/v1/treatments/{id}/dose-schedules/{doseScheduleId}/authorization-document', summary: 'Download the authorization document attached to a dose schedule version', security: [{ cookieAuth: [] }], request: { params: z.object({ id: BranchId, doseScheduleId: DoseScheduleId }) }, responses: { 200: { description: 'The stored file' }, 404: { description: 'No document for this schedule', content: { 'application/json': { schema: ErrorResponse } } } } });
+registry.registerPath({ method: 'get', path: '/api/v1/treatments/{id}/doses', summary: 'List materialized dose occurrences for a treatment', security: [{ cookieAuth: [] }], request: { params: z.object({ id: BranchId }) }, responses: { 200: { description: 'Dose occurrences, most recent first', content: { 'application/json': { schema: z.object({ data: z.array(DoseLogDto) }) } } }, 404: { description: 'Treatment not found', content: { 'application/json': { schema: ErrorResponse } } } } });
+registry.registerPath({ method: 'post', path: '/api/v1/treatments/{id}/doses/{doseLogId}/take', summary: 'Mark a scheduled dose as taken, consuming inventory', security: [{ cookieAuth: [] }], request: { params: z.object({ id: BranchId, doseLogId: DoseLogId }), body: { content: { 'application/json': { schema: DoseTakeInputDoc } } } }, responses: { 200: { description: 'Updated dose log', content: { 'application/json': { schema: DoseLogDto } } }, 409: { description: 'Not scheduled, or retroactive', content: { 'application/json': { schema: ErrorResponse } } } } });
+registry.registerPath({ method: 'post', path: '/api/v1/treatments/{id}/doses/{doseLogId}/skip', summary: 'Mark a scheduled dose as skipped - never consumes inventory', security: [{ cookieAuth: [] }], request: { params: z.object({ id: BranchId, doseLogId: DoseLogId }), body: { content: { 'application/json': { schema: DoseSkipInputDoc } } } }, responses: { 200: { description: 'Updated dose log', content: { 'application/json': { schema: DoseLogDto } } }, 409: { description: 'Not scheduled, or retroactive', content: { 'application/json': { schema: ErrorResponse } } } } });
+registry.registerPath({ method: 'post', path: '/api/v1/treatments/{id}/doses/{doseLogId}/reschedule', summary: 'Close this occurrence and open a new one at a different time', security: [{ cookieAuth: [] }], request: { params: z.object({ id: BranchId, doseLogId: DoseLogId }), body: { content: { 'application/json': { schema: DoseRescheduleInputDoc } } } }, responses: { 200: { description: 'Updated dose log and the new one it opened', content: { 'application/json': { schema: DoseLogDto } } }, 409: { description: 'Not scheduled, retroactive, or a conflicting occurrence already exists', content: { 'application/json': { schema: ErrorResponse } } } } });
+registry.registerPath({ method: 'post', path: '/api/v1/treatments/{id}/doses/{doseLogId}/correct', summary: 'Revert a taken/skipped/rescheduled dose back to scheduled, reversing any inventory it consumed', security: [{ cookieAuth: [] }], request: { params: z.object({ id: BranchId, doseLogId: DoseLogId }), body: { content: { 'application/json': { schema: DoseCorrectInputDoc } } } }, responses: { 200: { description: 'Reverted dose log', content: { 'application/json': { schema: DoseLogDto } } }, 409: { description: 'Nothing to correct', content: { 'application/json': { schema: ErrorResponse } } } } });
+registry.registerPath({ method: 'get', path: '/api/v1/treatments/{id}/inventory', summary: 'Balance, consumption rate and days remaining for a treatment', security: [{ cookieAuth: [] }], request: { params: z.object({ id: BranchId }) }, responses: { 200: { description: 'Inventory summary', content: { 'application/json': { schema: InventorySummary } } }, 404: { description: 'Treatment not found', content: { 'application/json': { schema: ErrorResponse } } } } });
+registry.registerPath({ method: 'get', path: '/api/v1/treatments/{id}/inventory/entries', summary: 'Paginated inventory ledger history', security: [{ cookieAuth: [] }], request: { params: z.object({ id: BranchId }), query: z.object({ limit: z.coerce.number().optional(), cursor: z.string().optional() }) }, responses: { 200: { description: 'Ledger entries', content: { 'application/json': { schema: z.object({ data: z.array(InventoryEntryDto), next_cursor: z.string().nullable() }) } } } } });
+registry.registerPath({ method: 'post', path: '/api/v1/treatments/{id}/external-purchases', summary: 'Record a purchase made outside the pharmacy, adding to the balance', security: [{ cookieAuth: [] }], request: { params: z.object({ id: BranchId }), body: { content: { 'application/json': { schema: ExternalPurchaseInputDoc } } } }, responses: { 201: { description: 'Purchase and the inventory entry it created', content: { 'application/json': { schema: z.object({ purchase: ExternalPurchaseDto, inventory_entry: InventoryEntryDto }) } } }, 404: { description: 'Treatment not found', content: { 'application/json': { schema: ErrorResponse } } } } });
+registry.registerPath({ method: 'post', path: '/api/v1/treatments/{id}/inventory/adjust', summary: 'Manual inventory adjustment (e.g. expired stock), positive or negative', security: [{ cookieAuth: [] }], request: { params: z.object({ id: BranchId }), body: { content: { 'application/json': { schema: InventoryAdjustInputDoc } } } }, responses: { 201: { description: 'The adjustment entry', content: { 'application/json': { schema: InventoryEntryDto } } }, 404: { description: 'Treatment not found', content: { 'application/json': { schema: ErrorResponse } } } } });
+registry.registerPath({ method: 'patch', path: '/api/v1/treatments/{id}/inventory/threshold', summary: 'Set or clear the low-inventory alert threshold', security: [{ cookieAuth: [] }], request: { params: z.object({ id: BranchId }), body: { content: { 'application/json': { schema: InventoryThresholdInputDoc } } } }, responses: { 200: { description: 'Updated threshold', content: { 'application/json': { schema: z.object({ id: z.string(), low_inventory_threshold: z.union([z.string(), z.number()]).nullable() }) } } }, 404: { description: 'Treatment not found', content: { 'application/json': { schema: ErrorResponse } } } } });
 registry.registerPath({
   method: 'post', path: '/api/v1/cycles/{id}/mark-prepared', summary: 'Mark an open refill cycle as prepared', security: [{ cookieAuth: [] }],
   request: { params: z.object({ id: BranchId }) },
   responses: { 200: { description: 'Prepared cycle' }, 403: { description: 'Forbidden', content: { 'application/json': { schema: ErrorResponse } } }, 404: { description: 'Cycle not found', content: { 'application/json': { schema: ErrorResponse } } }, 409: { description: 'Cycle is closed or treatment inactive', content: { 'application/json': { schema: ErrorResponse } } } },
+});
+registry.registerPath({
+  method: 'post', path: '/api/v1/cycles/{id}/close-external', summary: 'Close a cycle whose medication was bought elsewhere', security: [{ cookieAuth: [] }],
+  request: { params: z.object({ id: BranchId }), body: { content: { 'application/json': { schema: z.object({ outcome: z.enum(['delivered', 'not_picked_up']), quantity: z.coerce.number().positive(), purchased_on: z.string().date(), place: z.string().max(160).nullable().optional(), notes: z.string().max(5000).nullable().optional() }) } } } },
+  responses: { 201: { description: 'Cycle closed with an external purchase', content: { 'application/json': { schema: z.object({ cycle: z.record(z.string(), z.unknown()), purchase: z.record(z.string(), z.unknown()), next_cycle: z.record(z.string(), z.unknown()).nullable() }) } } }, 403: { description: 'Forbidden', content: { 'application/json': { schema: ErrorResponse } } }, 404: { description: 'Cycle not found', content: { 'application/json': { schema: ErrorResponse } } }, 409: { description: 'Cycle already closed', content: { 'application/json': { schema: ErrorResponse } } } },
 });
 registry.registerPath({
   method: 'post', path: '/api/v1/cycles/{id}/mark-not-picked-up', summary: 'Close an open cycle because the patient did not pick it up', security: [{ cookieAuth: [] }],
@@ -1218,7 +1309,7 @@ registry.registerPath({ method: 'delete', path: '/api/v1/doctors/{id}/specialtie
 registry.registerPath({ method: 'post', path: '/api/v1/doctors/{id}/medical-centers', summary: 'Link a medical center to a doctor', security: cookie, request: { params: idParams, body: { content: { 'application/json': { schema: DoctorMedicalCenterInput } } } }, responses: { 201: { description: 'Medical center linked', content: { 'application/json': { schema: DoctorMedicalCenterLink } } }, 404: err('Doctor or medical center not found'), 409: err('Medical center already linked') } });
 registry.registerPath({ method: 'patch', path: '/api/v1/doctors/{id}/medical-centers/{medicalCenterId}', summary: "Update a doctor's medical center link (office, position, schedule, or deactivate)", security: cookie, request: { params: z.object({ id: BranchId, medicalCenterId: z.string() }), body: { content: { 'application/json': { schema: DoctorMedicalCenterPatch } } } }, responses: { 200: { description: 'Link updated', content: { 'application/json': { schema: DoctorMedicalCenterLink } } }, 404: err('Active link not found'), 409: err('Medical center already linked') } });
 
-registry.registerPath({ method: 'get', path: '/api/v1/patients/{id}/doctors', summary: "List a patient's active doctors", security: cookie, request: { params: idParams }, responses: { 200: { description: 'Doctor links', content: { 'application/json': { schema: z.object({ data: z.array(PatientDoctorLink.extend({ doctor: Doctor.pick({ id: true, firstName: true, lastName: true, phone: true, licenseNumber: true }).extend({ specialties: z.array(z.object({ specialty: MedicalSpecialty.pick({ id: true, name: true }) })) }) })) }) } } }, 404: err('Patient not found') } });
+registry.registerPath({ method: 'get', path: '/api/v1/patients/{id}/doctors', summary: "List a patient's active doctors", security: cookie, request: { params: idParams }, responses: { 200: { description: 'Doctor links', content: { 'application/json': { schema: z.object({ data: z.array(PatientDoctorLink.extend({ doctor: Doctor.pick({ id: true, firstName: true, lastName: true, phone: true, licenseNumber: true }).extend({ specialties: z.array(z.object({ specialty: MedicalSpecialty.pick({ id: true, name: true }) })), medicalCenters: z.array(z.object({ medicalCenter: MedicalCenter.pick({ id: true, name: true }) })) }) })) }) } } }, 404: err('Patient not found') } });
 registry.registerPath({ method: 'post', path: '/api/v1/patients/{id}/doctors', summary: "Associate a doctor with a patient; promoting isPrimary demotes any other active primary doctor", security: cookie, request: { params: idParams, body: { content: { 'application/json': { schema: PatientDoctorInput } } } }, responses: { 201: { description: 'Doctor linked', content: { 'application/json': { schema: PatientDoctorLink } } }, 404: err('Patient or doctor not found'), 409: err('Doctor already linked') } });
 registry.registerPath({ method: 'patch', path: '/api/v1/patients/{id}/doctors/{doctorId}', summary: "Update a patient's active doctor link (notes, isPrimary, or deactivate preserving history)", security: cookie, request: { params: z.object({ id: BranchId, doctorId: z.string() }), body: { content: { 'application/json': { schema: PatientDoctorPatch } } } }, responses: { 200: { description: 'Link updated', content: { 'application/json': { schema: PatientDoctorLink } } }, 404: err('Active link not found'), 409: err('Doctor already linked') } });
 registry.registerPath({ method: 'get', path: '/api/v1/patients/{id}/conditions', summary: "List a patient's active health conditions", security: cookie, request: { params: idParams }, responses: { 200: { description: 'Condition links', content: { 'application/json': { schema: z.object({ data: z.array(PatientConditionLink.extend({ condition: HealthCondition.pick({ id: true, name: true }) })) }) } } }, 404: err('Patient not found') } });

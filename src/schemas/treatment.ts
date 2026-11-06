@@ -1,5 +1,6 @@
 import { z } from 'zod';
-import { derivedStatuses } from '../domain/coverage.js';
+import { derivedStatuses, treatmentStatuses } from '../domain/coverage.js';
+import { optionalPaging } from '../infra/pagination.js';
 
 const optionalText = (max: number) => z.string().trim().min(1).max(max).nullable().optional();
 const isoDate = z.string().date();
@@ -9,6 +10,8 @@ const treatmentFields = {
   medication_id: z.string().min(1),
   branch_id: z.string().min(1),
   name: optionalText(160),
+  /** Agrupa tratamientos creados juntos desde una misma sesión de "agregar medicamentos" en el perfil de salud; generado por el frontend, no referencia ninguna otra tabla. */
+  prescription_group_id: optionalText(64),
   responsible_user_id: z.string().min(1).nullable().optional(),
   dose_per_intake: z.coerce.number().positive().max(99999.999),
   intakes_per_day: z.coerce.number().positive().max(999.999),
@@ -16,6 +19,8 @@ const treatmentFields = {
   start_date: isoDate,
   end_date: isoDate.nullable().optional(),
   prescriber_name: optionalText(160),
+  /** Médico registrado que prescribe. Tiene prioridad sobre prescriber_name. */
+  prescriber_id: optionalText(64),
   prescription_expires_on: isoDate.nullable().optional(),
   notes: z.string().trim().max(5000).nullable().optional(),
   custom_values: z.record(z.string(), z.unknown()).optional(),
@@ -31,6 +36,11 @@ export const treatmentListQuery = z.object({
   branch_id: z.string().optional(),
   responsible_user_id: z.string().optional(),
   derived_status: z.enum(derivedStatuses).optional(),
+  prescription_group_id: z.string().optional(),
+  status: z.enum(treatmentStatuses).optional(),
+  /** Búsqueda por paciente, medicamento o nombre del tratamiento. */
+  q: z.string().trim().min(1).max(120).optional(),
+  ...optionalPaging.shape,
   limit: z.coerce.number().int().min(1).max(100).default(25),
   cursor: z.string().optional(),
 });

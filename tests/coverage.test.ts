@@ -8,6 +8,7 @@ import {
   daysRemaining,
   deriveCoverage,
   deriveStatus,
+  isPrescriptionExpired,
   prescriptionFlag,
   toDateOnly,
   unitsPerDay,
@@ -180,5 +181,24 @@ describe('prescription warning', () => {
     expect(prescriptionFlag(treatment(), today, settings)).toBe(false);
     expect(prescriptionFlag(treatment({ status: 'finished', prescriptionExpiresOn: addDays(today, 1) }), today, settings)).toBe(false);
     expect(prescriptionFlag(treatment({ prescriptionExpiresOn: addDays(today, 30) }), today, { ...settings, prescriptionWarningDays: 0 })).toBe(false);
+  });
+});
+
+describe('prescription blocks deliveries once it expired', () => {
+  it('is valid through its own expiry day and blocks the next day', () => {
+    const today = day('2026-11-13');
+    expect(isPrescriptionExpired({ prescriptionExpiresOn: day('2026-11-13') }, today)).toBe(false);
+    expect(isPrescriptionExpired({ prescriptionExpiresOn: day('2026-11-14') }, today)).toBe(false);
+    expect(isPrescriptionExpired({ prescriptionExpiresOn: day('2026-11-12') }, today)).toBe(true);
+    expect(isPrescriptionExpired({ prescriptionExpiresOn: day('2026-10-13') }, today)).toBe(true);
+  });
+
+  it('never blocks without a prescription date', () => {
+    expect(isPrescriptionExpired({ prescriptionExpiresOn: null }, day('2026-11-13'))).toBe(false);
+  });
+
+  it('accepts the string form the API stores', () => {
+    expect(isPrescriptionExpired({ prescriptionExpiresOn: '2026-11-01' }, day('2026-11-13'))).toBe(true);
+    expect(isPrescriptionExpired({ prescriptionExpiresOn: '2026-12-01T00:00:00.000Z' }, day('2026-11-13'))).toBe(false);
   });
 });

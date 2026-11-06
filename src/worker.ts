@@ -8,6 +8,9 @@ import { cleanOutbox, reviewPrescriptions } from './jobs/maintenance.js';
 import { planNotices } from './jobs/planNotices.js';
 import { processInbound } from './jobs/processInbound.js';
 import { sendNotice } from './jobs/sendNotice.js';
+import { generateDoseOccurrences } from './jobs/generateDoseOccurrences.js';
+import { doseReminders } from './jobs/doseReminders.js';
+import { inventoryAlerts } from './jobs/inventoryAlerts.js';
 import { JOBS, type JobName, type JobQueue, type SendNoticeData } from './jobs/types.js';
 import { trackRun } from './jobs/runLog.js';
 import { runScheduledAutomations } from './modules/automation/engine.js';
@@ -57,6 +60,9 @@ async function main() {
   await createQueue(JOBS.processInbound, 3);
   await createQueue(JOBS.reviewPrescriptions, 2);
   await createQueue(JOBS.cleanOutbox, 1);
+  await createQueue(JOBS.generateDoseOccurrences, 2);
+  await createQueue(JOBS.doseReminders, 2);
+  await createQueue(JOBS.inventoryAlerts, 2);
 
   // Cron jobs are idempotent by construction (outbox dedupe keys, unique open incidents).
   await boss.work(JOBS.planNotices, async () => {
@@ -103,6 +109,24 @@ async function main() {
       logger.info({ job: JOBS.scheduledRules }, 'job finished');
     });
   });
+  await boss.work(JOBS.generateDoseOccurrences, async () => {
+    await trackRun(JOBS.generateDoseOccurrences, async () => {
+      const summary = await generateDoseOccurrences();
+      logger.info({ job: JOBS.generateDoseOccurrences, ...summary }, 'job finished');
+    });
+  });
+  await boss.work(JOBS.doseReminders, async () => {
+    await trackRun(JOBS.doseReminders, async () => {
+      const summary = await doseReminders();
+      logger.info({ job: JOBS.doseReminders, ...summary }, 'job finished');
+    });
+  });
+  await boss.work(JOBS.inventoryAlerts, async () => {
+    await trackRun(JOBS.inventoryAlerts, async () => {
+      const summary = await inventoryAlerts();
+      logger.info({ job: JOBS.inventoryAlerts, ...summary }, 'job finished');
+    });
+  });
 
   await boss.schedule(JOBS.planNotices, '*/15 * * * *');
   await boss.schedule(JOBS.processNoResponse, '*/15 * * * *');
@@ -111,6 +135,10 @@ async function main() {
   // The prescription review compares against each organization's own calendar day, so one daily run is enough.
   await boss.schedule(JOBS.reviewPrescriptions, '0 9 * * *');
   await boss.schedule(JOBS.cleanOutbox, '0 5 * * 0');
+  // Same cadence as planNotices/processNoResponse: dose tracking is a parallel pipeline to the refill one.
+  await boss.schedule(JOBS.generateDoseOccurrences, '*/15 * * * *');
+  await boss.schedule(JOBS.doseReminders, '*/15 * * * *');
+  await boss.schedule(JOBS.inventoryAlerts, '*/15 * * * *');
   logger.info({ provider: env.MESSAGING_PROVIDER }, 'worker started');
 }
 

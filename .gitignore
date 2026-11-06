@@ -3,4 +3,5 @@ dist/
 .env
 coverage/
 backups/
+uploads/
 *.log

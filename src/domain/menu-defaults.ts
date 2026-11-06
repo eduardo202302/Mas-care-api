@@ -22,6 +22,7 @@ export const menuSeeds: readonly MenuSeed[] = [
   { key: 'companias', label: 'Compañías', path: '/companias', icon: 'building-2', order: 30, permission: 'companies:write', parentKey: null },
   { key: 'trabajos', label: 'Trabajos', path: '/trabajos', icon: 'activity', order: 31, permission: 'companies:write', parentKey: null },
   { key: 'pacientes', label: 'Pacientes', path: '/pacientes', icon: 'users', order: 40, permission: null, parentKey: null },
+  { key: 'tratamientos', label: 'Tratamientos', path: '/tratamientos', icon: 'clipboard-list', order: 45, permission: 'treatments:read', parentKey: null },
   { key: 'medicamentos', label: 'Medicamentos', path: '/medicamentos', icon: 'pill', order: 50, permission: null, parentKey: null },
   { key: 'ajustes', label: 'Ajustes', path: null, icon: 'settings-2', order: 60, permission: null, parentKey: null },
   { key: 'sucursales', label: 'Sucursales', path: '/ajustes/sucursales', icon: 'store', order: 61, permission: null, parentKey: 'ajustes' },
@@ -50,7 +51,7 @@ export type SystemRoleSeed = {
   flags: PermissionFlags;
 };
 
-const common = ['inicio', 'tablero', 'incidencias', 'avisos', 'tareas', 'pacientes', 'medicamentos', 'ajustes', 'sucursales', 'usuarios', 'plantillas', 'umbrales', 'existencias', 'medicos', 'especialidades', 'centros_medicos', 'condiciones_salud'] as const;
+const common = ['inicio', 'tablero', 'incidencias', 'avisos', 'tareas', 'pacientes', 'tratamientos', 'medicamentos', 'ajustes', 'sucursales', 'usuarios', 'plantillas', 'umbrales', 'existencias', 'medicos', 'especialidades', 'centros_medicos', 'condiciones_salud'] as const;
 
 export const systemRoleSeeds: readonly SystemRoleSeed[] = [
   { key: 'owner', name: 'Propietario', description: 'Acceso total a la organización.', menuKeys: 'all', flags: { canView: true, canCreate: true, canEdit: true, canDelete: true } },

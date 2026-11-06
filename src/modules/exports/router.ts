@@ -84,11 +84,40 @@ const cycleColumns: Def<CycleRow> = {
   createdAt: { header: 'Creado', value: (r) => r.createdAt.toISOString() },
 };
 
-const catalogs = { patients: patientColumns, medications: medicationColumns, cycles: cycleColumns } as unknown as Record<ExportEntity, Def<unknown>>;
+type TreatmentRow = Prisma.TreatmentGetPayload<{
+  include: {
+    branch: { select: { name: true } };
+    patient: { select: { fullName: true } };
+    medication: { select: { genericName: true; brandName: true; presentation: true } };
+    responsibleUser: { select: { name: true } };
+    prescriberDoctor: { select: { firstName: true; lastName: true } };
+  };
+}>;
+const treatmentColumns: Def<TreatmentRow> = {
+  id: { header: 'ID', value: (r) => r.numericId.toString() },
+  branchName: { header: 'Sucursal', value: (r) => r.branch.name },
+  status: { header: 'Estado', value: (r) => r.status },
+  patientName: { header: 'Paciente', value: (r) => r.patient.fullName },
+  medicationName: { header: 'Medicamento', value: (r) => r.medication.brandName ?? r.medication.genericName ?? r.medication.presentation },
+  presentation: { header: 'Presentación', value: (r) => r.medication.presentation },
+  dosePerIntake: { header: 'Dosis por toma', value: (r) => num(r.dosePerIntake) },
+  intakesPerDay: { header: 'Tomas por día', value: (r) => num(r.intakesPerDay) },
+  doctorName: { header: 'Doctor', value: (r) => (r.prescriberDoctor ? `${r.prescriberDoctor.firstName} ${r.prescriberDoctor.lastName}`.trim() : r.prescriberName) },
+  startDate: { header: 'Fecha de inicio', value: (r) => date(r.startDate) },
+  endDate: { header: 'Fecha de fin', value: (r) => date(r.endDate) },
+  lastDeliveryOn: { header: 'Última entrega', value: (r) => date(r.lastDeliveryOn) },
+  coverageEndOn: { header: 'Fin de cobertura', value: (r) => date(r.coverageEndOn) },
+  prescriptionExpiresOn: { header: 'Vigencia de la receta', value: (r) => date(r.prescriptionExpiresOn) },
+  responsibleUserName: { header: 'Responsable', value: (r) => r.responsibleUser?.name ?? null },
+  notes: { header: 'Notas', value: (r) => r.notes },
+  createdAt: { header: 'Creado', value: (r) => r.createdAt.toISOString() },
+};
+
+const catalogs = { patients: patientColumns, medications: medicationColumns, cycles: cycleColumns, treatments: treatmentColumns } as unknown as Record<ExportEntity, Def<unknown>>;
 
 // Organization-defined properties are offered as extra columns keyed `custom:<key>`: patient properties on
 // the patients export, treatment properties on the cycles export (a cycle belongs to one treatment).
-const customOwner = { patients: { entity: 'patient', read: (r: unknown) => (r as PatientRow).customValues }, cycles: { entity: 'treatment', read: (r: unknown) => (r as CycleRow).treatment.customValues } } as const;
+const customOwner = { patients: { entity: 'patient', read: (r: unknown) => (r as PatientRow).customValues }, cycles: { entity: 'treatment', read: (r: unknown) => (r as CycleRow).treatment.customValues }, treatments: { entity: 'treatment', read: (r: unknown) => (r as TreatmentRow).customValues } } as const;
 
 async function catalogFor(entity: ExportEntity, tx: Prisma.TransactionClient): Promise<Def<unknown>> {
   const owner = entity === 'medications' ? null : customOwner[entity];
@@ -158,12 +187,43 @@ async function loadRows(entity: ExportEntity, tenant: NonNullable<Express.Reques
     });
   }
   const scope = await accessibleBranchIds(tx, tenant);
+  if (entity === 'treatments') {
+    const treatmentStatus = input.status === 'active' || input.status === 'paused' || input.status === 'finished' ? input.status : undefined;
+    return tx.treatment.findMany({
+      where: {
+        AND: [
+          scope === null ? {} : { branchId: { in: scope } },
+          input.branchId ? { branchId: input.branchId } : {},
+          treatmentStatus ? { status: treatmentStatus } : {},
+          input.q ? { OR: [
+            { name: { contains: input.q, mode: 'insensitive' } },
+            { patient: { fullName: { contains: input.q, mode: 'insensitive' } } },
+            { medication: { OR: [
+              { brandName: { contains: input.q, mode: 'insensitive' } },
+              { genericName: { contains: input.q, mode: 'insensitive' } },
+              { activeIngredient: { contains: input.q, mode: 'insensitive' } },
+            ] } },
+          ] } : {},
+        ],
+      },
+      include: {
+        branch: { select: { name: true } },
+        patient: { select: { fullName: true } },
+        medication: { select: { genericName: true, brandName: true, presentation: true } },
+        responsibleUser: { select: { name: true } },
+        prescriberDoctor: { select: { firstName: true, lastName: true } },
+      },
+      orderBy: [{ branchId: 'asc' }, { createdAt: 'desc' }, { id: 'desc' }],
+      take,
+    });
+  }
+  const cycleStatus = input.status && !['active', 'paused', 'finished'].includes(input.status) ? input.status : undefined;
   return tx.refillCycle.findMany({
     where: {
       AND: [
         scope === null ? {} : { branchId: { in: scope } },
         input.branchId ? { branchId: input.branchId } : {},
-        input.status ? { status: input.status } : {},
+        cycleStatus ? { status: cycleStatus as Exclude<NonNullable<typeof input.status>, 'active' | 'paused' | 'finished'> } : {},
       ],
     },
     include: {

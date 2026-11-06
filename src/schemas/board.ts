@@ -61,6 +61,19 @@ export const cycleCreateInput = z.object({
   'Falta el tratamiento o los datos para crearlo (paciente, producto, compañía y cantidad)',
 );
 
+/**
+ * Cierre de un ciclo cuyo medicamento NO salió de la farmacia: el paciente lo
+ * compró en otro lado. Registra esa compra, cierra el ciclo con el resultado
+ * elegido y, si el paciente tiene su medicamento, extiende la cobertura.
+ */
+export const cycleCloseExternalInput = z.object({
+  outcome: z.enum(['delivered', 'not_picked_up']),
+  quantity: z.coerce.number().positive().max(99999999.999),
+  purchased_on: isoDate,
+  place: z.string().trim().max(160).nullable().optional(),
+  notes: z.string().trim().max(5000).nullable().optional(),
+}).strict();
+
 export const eligibleTreatmentsQuery = z.object({
   q: z.string().trim().max(100).optional(),
 }).strict();
