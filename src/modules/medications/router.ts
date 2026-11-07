@@ -21,6 +21,12 @@ const attachmentSelect = {
   id: true, kind: true, originalName: true, mimeType: true, sizeBytes: true, isPrimary: true, createdAt: true,
 } satisfies Prisma.MedicationAttachmentSelect;
 
+/** Tratamientos en curso (activos o en pausa) de pacientes no archivados. */
+const ongoingTreatmentWhere = {
+  status: { in: ['active', 'paused'] },
+  patient: { archivedAt: null },
+} satisfies Prisma.TreatmentWhereInput;
+
 export const medicationsRouter = Router();
 medicationsRouter.use(resolveTenant);
 
@@ -46,13 +52,57 @@ medicationsRouter.get('/', validateQuery(medicationListQuery), async (req, res) 
     orderBy: [{ genericName: 'asc' }, { brandName: 'asc' }, { id: 'asc' }],
     take: args.take,
     skip: args.skip,
-    include: { attachments: { where: { isPrimary: true }, select: { id: true }, take: 1 } },
+    include: {
+      attachments: { where: { isPrimary: true }, select: { id: true }, take: 1 },
+      _count: { select: { treatments: { where: ongoingTreatmentWhere } } },
+    },
     ...(args.cursor ? { cursor: { organizationId_id: { organizationId: tenant.organizationId, id: args.cursor } } } : {}),
   }), () => tx.medication.count({ where })));
   res.json({
     ...result,
-    data: result.data.map(({ attachments, ...medication }) => ({ ...medication, primaryImageId: attachments[0]?.id ?? null })),
+    data: result.data.map(({ attachments, _count, ...medication }) => ({
+      ...medication,
+      primaryImageId: attachments[0]?.id ?? null,
+      treatmentCount: _count.treatments,
+    })),
   });
+});
+
+medicationsRouter.get('/:id/patients', validateParams(medicationParams), async (req, res) => {
+  const tenant = req.tenant!;
+  requirePermission(tenant.role, 'medications:read');
+  requirePermission(tenant.role, 'patients:read');
+  requirePermission(tenant.role, 'treatments:read');
+  const { id } = res.locals.validatedParams as z.infer<typeof medicationParams>;
+  const data = await withTenant(tenant.organizationId, async (tx) => {
+    const medication = await tx.medication.findFirst({ where: { id }, select: { id: true } });
+    if (!medication) throw new ApiError(404, 'NOT_FOUND', 'Medication not found');
+    const treatments = await tx.treatment.findMany({
+      where: { medicationId: id, ...ongoingTreatmentWhere },
+      orderBy: [{ startDate: 'asc' }, { id: 'asc' }],
+      select: {
+        id: true,
+        startDate: true,
+        status: true,
+        patient: { select: { id: true, numericId: true, fullName: true, phone: true, phoneHasWhatsapp: true, addressDetails: true } },
+      },
+    });
+    return treatments.map(({ patient, ...treatment }) => {
+      const city = (patient.addressDetails as Record<string, unknown> | null)?.city;
+      return {
+        treatmentId: treatment.id,
+        startDate: treatment.startDate,
+        status: treatment.status,
+        patientId: patient.id,
+        patientNumericId: patient.numericId,
+        fullName: patient.fullName,
+        phone: patient.phone,
+        phoneHasWhatsapp: patient.phoneHasWhatsapp,
+        city: typeof city === 'string' && city ? city : null,
+      };
+    });
+  });
+  res.json({ data });
 });
 
 medicationsRouter.post('/', validateBody(medicationCreate), async (req, res) => {
