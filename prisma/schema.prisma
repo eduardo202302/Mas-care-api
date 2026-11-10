@@ -30,6 +30,7 @@ model Branch {
   deliveries       Delivery[]
   tasks            Task[]
   messageTemplates MessageTemplate[]
+  labelTemplates   LabelTemplate[]
   stockMarks       MedicationStockMark[]
   incidents        Incident[]
   outboxMessages   OutboxMessage[]
@@ -230,22 +231,22 @@ model PatientConsent {
 }
 
 model Medication {
-  id               String                @id @default(cuid())
-  organizationId   String                @map("organization_id")
-  brandName        String?               @map("brand_name")
-  genericName      String?               @map("generic_name")
-  activeIngredient String?               @map("active_ingredient")
+  id               String                 @id @default(cuid())
+  organizationId   String                 @map("organization_id")
+  brandName        String?                @map("brand_name")
+  genericName      String?                @map("generic_name")
+  activeIngredient String?                @map("active_ingredient")
   presentation     String
-  doseUnit         String                @default("tablet") @map("dose_unit")
-  unitsPerPackage  Decimal?              @map("units_per_package") @db.Decimal(8, 2)
-  createdAt        DateTime              @default(now()) @map("created_at")
-  updatedAt        DateTime              @updatedAt @map("updated_at")
-  archivedAt       DateTime?             @map("archived_at")
-  organization     Organization          @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  doseUnit         String                 @default("tablet") @map("dose_unit")
+  unitsPerPackage  Decimal?               @map("units_per_package") @db.Decimal(8, 2)
+  createdAt        DateTime               @default(now()) @map("created_at")
+  updatedAt        DateTime               @updatedAt @map("updated_at")
+  archivedAt       DateTime?              @map("archived_at")
+  organization     Organization           @relation(fields: [organizationId], references: [id], onDelete: Cascade)
   treatments       Treatment[]
   stockMarks       MedicationStockMark[]
   attachments      MedicationAttachment[]
-  numericId        BigInt                @unique @default(dbgenerated("nextval('global_numeric_id_seq'::regclass)")) @map("numeric_id")
+  numericId        BigInt                 @unique @default(dbgenerated("nextval('global_numeric_id_seq'::regclass)")) @map("numeric_id")
 
   @@unique([organizationId, id])
   @@index([organizationId])
@@ -579,7 +580,7 @@ model Treatment {
   prescriberDoctor         Doctor?                    @relation("TreatmentPrescriber", fields: [prescriberDoctorId], references: [id], onDelete: SetNull)
   prescriptionExpiresOn    DateTime?                  @map("prescription_expires_on") @db.Date
   prescriptionDocumentPath String?                    @map("prescription_document_path")
-  status                   TreatmentStatus           @default(active)
+  status                   TreatmentStatus            @default(active)
   statusReason             String?                    @map("status_reason") @db.Text
   statusChangedAt          DateTime?                  @map("status_changed_at")
   lastDeliveryOn           DateTime?                  @map("last_delivery_on") @db.Date
@@ -912,29 +913,29 @@ enum InventoryEntryType {
  * authorizationDocumentPath.
  */
 model DoseSchedule {
-  id                        String       @id @default(cuid())
-  organizationId            String       @map("organization_id")
-  treatmentId               String       @map("treatment_id")
-  dosePerIntake             Decimal      @map("dose_per_intake") @db.Decimal(8, 3)
-  times                     String[]     @map("times")
+  id                        String            @id @default(cuid())
+  organizationId            String            @map("organization_id")
+  treatmentId               String            @map("treatment_id")
+  dosePerIntake             Decimal           @map("dose_per_intake") @db.Decimal(8, 3)
+  times                     String[]          @map("times")
   frequencyType             DoseFrequencyType @default(daily) @map("frequency_type")
-  intervalHours             Int?         @map("interval_hours")
-  anchorAt                  DateTime?    @map("anchor_at")
-  weekdays                  Int[]        @default([]) @map("weekdays")
-  monthdays                 Int[]        @default([]) @map("monthdays")
-  effectiveFrom             DateTime     @map("effective_from") @db.Date
-  effectiveTo               DateTime?    @map("effective_to") @db.Date
-  reason                    String?      @db.Text
-  authorizedBy              String?      @map("authorized_by")
-  authorizationNote         String?      @map("authorization_note") @db.Text
-  authorizationDocumentPath String?      @map("authorization_document_path")
-  createdBy                 String       @map("created_by")
-  createdAt                 DateTime     @default(now()) @map("created_at")
-  organization              Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
-  treatment                 Treatment    @relation(fields: [treatmentId], references: [id], onDelete: Cascade)
-  creator                   User         @relation("DoseScheduleCreatedBy", fields: [createdBy], references: [id], onDelete: Restrict)
+  intervalHours             Int?              @map("interval_hours")
+  anchorAt                  DateTime?         @map("anchor_at")
+  weekdays                  Int[]             @default([]) @map("weekdays")
+  monthdays                 Int[]             @default([]) @map("monthdays")
+  effectiveFrom             DateTime          @map("effective_from") @db.Date
+  effectiveTo               DateTime?         @map("effective_to") @db.Date
+  reason                    String?           @db.Text
+  authorizedBy              String?           @map("authorized_by")
+  authorizationNote         String?           @map("authorization_note") @db.Text
+  authorizationDocumentPath String?           @map("authorization_document_path")
+  createdBy                 String            @map("created_by")
+  createdAt                 DateTime          @default(now()) @map("created_at")
+  organization              Organization      @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  treatment                 Treatment         @relation(fields: [treatmentId], references: [id], onDelete: Cascade)
+  creator                   User              @relation("DoseScheduleCreatedBy", fields: [createdBy], references: [id], onDelete: Restrict)
   doseLogs                  DoseLog[]
-  numericId                 BigInt       @unique @default(dbgenerated("nextval('global_numeric_id_seq'::regclass)")) @map("numeric_id")
+  numericId                 BigInt            @unique @default(dbgenerated("nextval('global_numeric_id_seq'::regclass)")) @map("numeric_id")
 
   @@unique([organizationId, id])
   @@index([organizationId, treatmentId, effectiveFrom])
@@ -1309,6 +1310,30 @@ model MessageTemplate {
   @@map("message_templates")
 }
 
+model LabelTemplate {
+  id             String       @id @default(cuid())
+  organizationId String       @map("organization_id")
+  branchId       String?      @map("branch_id")
+  name           String
+  description    String?
+  widthMm        Decimal      @default(100) @map("width_mm") @db.Decimal(6, 2)
+  heightMm       Decimal      @default(60) @map("height_mm") @db.Decimal(6, 2)
+  orientation    String       @default("landscape")
+  elements       Json         @default("[]")
+  isDefault      Boolean      @default(false) @map("is_default")
+  isActive       Boolean      @default(true) @map("is_active")
+  createdAt      DateTime     @default(now()) @map("created_at")
+  updatedAt      DateTime     @updatedAt @map("updated_at")
+  organization   Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  branch         Branch?      @relation(fields: [branchId], references: [id], onDelete: Cascade)
+  numericId      BigInt       @unique @default(dbgenerated("nextval('global_numeric_id_seq'::regclass)")) @map("numeric_id")
+
+  @@unique([organizationId, id])
+  @@index([organizationId, isActive])
+  @@index([organizationId, branchId])
+  @@map("label_templates")
+}
+
 model ImportJob {
   id             String       @id @default(cuid())
   organizationId String       @map("organization_id")
@@ -1490,6 +1515,7 @@ model Organization {
   deliveries         Delivery[]
   tasks              Task[]
   messageTemplates   MessageTemplate[]
+  labelTemplates     LabelTemplate[]
   importJobs         ImportJob[]
   roles              Role[]
   outboxMessages     OutboxMessage[]

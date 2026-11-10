@@ -37,6 +37,7 @@ import { automationSettingsPatch, automationSettingsQuery, killSwitchInput } fro
 import { deliveryInput, noticeLoggedInput, noticePreviewQuery } from '../schemas/delivery.js';
 import { taskCreate, taskListQuery, taskPatch } from '../schemas/task.js';
 import { templateCreate, templateListQuery, templatePatch } from '../schemas/message-template.js';
+import { labelTemplateCreate, labelTemplateListQuery, labelTemplatePatch, labelTemplatePreviewQuery } from '../schemas/label-template.js';
 import { columnMapping } from '../schemas/import.js';
 import { menuCreate, menuItemSchema, menuListQuery, menuPatch, menuReorder } from '../schemas/menu.js';
 import { roleCreate, roleListQuery, rolePatch, roleSchema } from '../schemas/role.js';
@@ -209,6 +210,10 @@ const TaskListQuery = registry.register('TaskListQuery', taskListQuery);
 const TemplateCreate = registry.register('TemplateCreate', templateCreate);
 const TemplatePatch = registry.register('TemplatePatch', templatePatch);
 const TemplateListQuery = registry.register('TemplateListQuery', templateListQuery);
+const LabelTemplateCreate = registry.register('LabelTemplateCreate', labelTemplateCreate);
+const LabelTemplatePatch = registry.register('LabelTemplatePatch', labelTemplatePatch);
+const LabelTemplateListQuery = registry.register('LabelTemplateListQuery', labelTemplateListQuery);
+const LabelTemplatePreviewQuery = registry.register('LabelTemplatePreviewQuery', labelTemplatePreviewQuery);
 const ColumnMapping = registry.register('ColumnMapping', columnMapping);
 const MenuItem = registry.register('MenuItem', menuItemSchema);
 const MenuCreate = registry.register('MenuCreate', menuCreate);
@@ -780,6 +785,36 @@ registry.registerPath({
   method: 'delete', path: '/api/v1/message-templates/{id}', summary: 'Deactivate a message template', security: [{ cookieAuth: [] }],
   request: { params: z.object({ id: BranchId }) },
   responses: { 204: { description: 'Template deactivated' }, 403: { description: 'Owner, admin or pharmacist required', content: { 'application/json': { schema: ErrorResponse } } }, 404: { description: 'Template not found', content: { 'application/json': { schema: ErrorResponse } } } },
+});
+registry.registerPath({
+  method: 'get', path: '/api/v1/label-templates', summary: 'List label (printing) templates', security: [{ cookieAuth: [] }],
+  request: { query: LabelTemplateListQuery },
+  responses: { 200: { description: 'Label templates', content: { 'application/json': { schema: z.object({ data: z.array(z.record(z.string(), z.unknown())) }) } } } },
+});
+registry.registerPath({
+  method: 'post', path: '/api/v1/label-templates', summary: 'Create a label template', security: [{ cookieAuth: [] }],
+  request: { body: { content: { 'application/json': { schema: LabelTemplateCreate } } } },
+  responses: { 201: { description: 'Label template created' }, 403: { description: 'Owner, admin or pharmacist required', content: { 'application/json': { schema: ErrorResponse } } } },
+});
+registry.registerPath({
+  method: 'get', path: '/api/v1/label-templates/{id}', summary: 'Get a label template', security: [{ cookieAuth: [] }],
+  request: { params: z.object({ id: BranchId }) },
+  responses: { 200: { description: 'Label template' }, 404: { description: 'Label template not found', content: { 'application/json': { schema: ErrorResponse } } } },
+});
+registry.registerPath({
+  method: 'patch', path: '/api/v1/label-templates/{id}', summary: 'Update a label template', security: [{ cookieAuth: [] }],
+  request: { params: z.object({ id: BranchId }), body: { content: { 'application/json': { schema: LabelTemplatePatch } } } },
+  responses: { 200: { description: 'Updated label template' }, 403: { description: 'Owner, admin or pharmacist required', content: { 'application/json': { schema: ErrorResponse } } }, 404: { description: 'Label template not found', content: { 'application/json': { schema: ErrorResponse } } } },
+});
+registry.registerPath({
+  method: 'delete', path: '/api/v1/label-templates/{id}', summary: 'Deactivate a label template', security: [{ cookieAuth: [] }],
+  request: { params: z.object({ id: BranchId }) },
+  responses: { 204: { description: 'Label template deactivated' }, 403: { description: 'Owner, admin or pharmacist required', content: { 'application/json': { schema: ErrorResponse } } }, 404: { description: 'Label template not found', content: { 'application/json': { schema: ErrorResponse } } } },
+});
+registry.registerPath({
+  method: 'get', path: '/api/v1/label-templates/{id}/preview', summary: 'Resolve a label template\'s variables against a real treatment', security: [{ cookieAuth: [] }],
+  request: { params: z.object({ id: BranchId }), query: LabelTemplatePreviewQuery },
+  responses: { 200: { description: 'Resolved variable values' }, 404: { description: 'Label template or treatment not found', content: { 'application/json': { schema: ErrorResponse } } } },
 });
 registry.registerPath({
   method: 'post', path: '/api/v1/imports/patients/preview', summary: 'Preview the first rows of a patient CSV', security: [{ cookieAuth: [] }],
