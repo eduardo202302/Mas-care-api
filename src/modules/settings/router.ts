@@ -38,14 +38,14 @@ const serialize = (row: {
 
 settingsRouter.get('/', async (req, res) => {
   const tenant = req.tenant!;
-  requirePermission(tenant.role, 'settings:read');
+  requirePermission(tenant.permissions, 'settings:read');
   const settings = await withTenant(tenant.organizationId, (tx) => findOrCreateSetting(tx, tenant.organizationId));
   res.json(serialize(settings));
 });
 
 settingsRouter.patch('/', validateBody(settingsPatch), async (req, res) => {
   const tenant = req.tenant!;
-  requirePermission(tenant.role, 'settings:write');
+  requirePermission(tenant.permissions, 'settings:write');
   const input = req.body as z.infer<typeof settingsPatch>;
   const settings = await withTenant(tenant.organizationId, async (tx) => {
     const current = await findOrCreateSetting(tx, tenant.organizationId);

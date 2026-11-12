@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { assignableRoles } from './user.js';
+import { actions } from '../domain/permissions.js';
 
 export const roleGrantInput = z.object({
   menuItemId: z.string().min(1),
@@ -12,7 +12,8 @@ export const roleGrantInput = z.object({
 const roleFields = {
   name: z.string().trim().min(2, 'Mínimo 2 caracteres.').max(80),
   description: z.string().trim().max(300).nullable(),
-  baseRole: z.enum(assignableRoles),
+  permissions: z.array(z.enum(actions)).max(actions.length),
+  allBranches: z.boolean(),
   isActive: z.boolean(),
   items: z.array(roleGrantInput).max(200),
 };
@@ -20,7 +21,8 @@ const roleFields = {
 export const roleCreate = z.object({
   name: roleFields.name,
   description: roleFields.description.optional(),
-  baseRole: roleFields.baseRole,
+  permissions: roleFields.permissions.default([]),
+  allBranches: roleFields.allBranches.optional(),
   isActive: roleFields.isActive.optional(),
   items: roleFields.items.default([]),
 }).strict();
@@ -28,7 +30,8 @@ export const roleCreate = z.object({
 export const rolePatch = z.object({
   name: roleFields.name,
   description: roleFields.description,
-  baseRole: roleFields.baseRole,
+  permissions: roleFields.permissions,
+  allBranches: roleFields.allBranches,
   isActive: roleFields.isActive,
   items: roleFields.items,
 }).partial().strict().refine((value) => Object.keys(value).length > 0, 'Proporciona al menos un campo para actualizar');
@@ -42,7 +45,7 @@ export const roleListQuery = z.object({
 
 export const roleSchema = z.object({
   id: z.string(), numericId: z.string(), key: z.string().nullable(), name: z.string(), description: z.string().nullable(),
-  baseRole: z.string(), isSystem: z.boolean(), isActive: z.boolean(), memberCount: z.number().int(),
+  permissions: z.array(z.string()), allBranches: z.boolean(), isSystem: z.boolean(), isActive: z.boolean(), memberCount: z.number().int(),
   items: z.array(z.object({
     menuItemId: z.string(), canView: z.boolean(), canCreate: z.boolean(), canEdit: z.boolean(), canDelete: z.boolean(),
   })),

@@ -94,7 +94,7 @@ async function resolveLinks(
 
 tasksRouter.get('/', validateQuery(taskListQuery), async (req, res) => {
   const tenant = req.tenant!;
-  requirePermission(tenant.role, 'tasks:read');
+  requirePermission(tenant.permissions, 'tasks:read');
   const query = res.locals.validatedQuery as z.infer<typeof taskListQuery>;
   const filter = parseTaskFilter(query.filter);
   if (!filter) throw new ApiError(400, 'INVALID_FILTER', 'Unknown task filter');
@@ -134,7 +134,7 @@ tasksRouter.get('/', validateQuery(taskListQuery), async (req, res) => {
 
 tasksRouter.post('/', validateBody(taskCreate), async (req, res) => {
   const tenant = req.tenant!;
-  requirePermission(tenant.role, 'tasks:write');
+  requirePermission(tenant.permissions, 'tasks:write');
   const input = req.body as z.infer<typeof taskCreate>;
   const task = await withTenant(tenant.organizationId, async (tx) => {
     await assertAssignee(tx, tenant.organizationId, input.assigned_to);
@@ -165,7 +165,7 @@ tasksRouter.post('/', validateBody(taskCreate), async (req, res) => {
 
 tasksRouter.get('/:id', validateParams(taskParams), async (req, res) => {
   const tenant = req.tenant!;
-  requirePermission(tenant.role, 'tasks:read');
+  requirePermission(tenant.permissions, 'tasks:read');
   const { id } = res.locals.validatedParams as z.infer<typeof taskParams>;
   const task = await withTenant(tenant.organizationId, async (tx) => {
     const found = await findTask(tx, tenant, id);
@@ -177,7 +177,7 @@ tasksRouter.get('/:id', validateParams(taskParams), async (req, res) => {
 
 tasksRouter.patch('/:id', validateParams(taskParams), validateBody(taskPatch), async (req, res) => {
   const tenant = req.tenant!;
-  requirePermission(tenant.role, 'tasks:write');
+  requirePermission(tenant.permissions, 'tasks:write');
   const { id } = res.locals.validatedParams as z.infer<typeof taskParams>;
   const input = req.body as z.infer<typeof taskPatch>;
   const task = await withTenant(tenant.organizationId, async (tx) => {
@@ -238,7 +238,7 @@ tasksRouter.patch('/:id', validateParams(taskParams), validateBody(taskPatch), a
 
 tasksRouter.post('/:id/complete', validateParams(taskParams), async (req, res) => {
   const tenant = req.tenant!;
-  requirePermission(tenant.role, 'tasks:write');
+  requirePermission(tenant.permissions, 'tasks:write');
   const { id } = res.locals.validatedParams as z.infer<typeof taskParams>;
   const task = await withTenant(tenant.organizationId, async (tx) => {
     const current = await findTask(tx, tenant, id);
@@ -270,7 +270,7 @@ tasksRouter.post('/:id/complete', validateParams(taskParams), async (req, res) =
 
 tasksRouter.delete('/:id', validateParams(taskParams), async (req, res) => {
   const tenant = req.tenant!;
-  requirePermission(tenant.role, 'tasks:write');
+  requirePermission(tenant.permissions, 'tasks:write');
   const { id } = res.locals.validatedParams as z.infer<typeof taskParams>;
   await withTenant(tenant.organizationId, async (tx) => {
     const current = await findTask(tx, tenant, id);

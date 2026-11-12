@@ -16,14 +16,14 @@ const requirePermission = (role: Parameters<typeof puede>[0], action: Parameters
 
 boardRouter.get('/', validateQuery(boardQuery), async (req, res) => {
   const tenant = req.tenant!;
-  requirePermission(tenant.role, 'treatments:read');
+  requirePermission(tenant.permissions, 'treatments:read');
   const query = res.locals.validatedQuery as z.infer<typeof boardQuery>;
   res.json(await boardData(tenant, query));
 });
 
 boardRouter.get('/columns/:status', validateParams(boardColumnParams), validateQuery(boardColumnsQuery), async (req, res) => {
   const tenant = req.tenant!;
-  requirePermission(tenant.role, 'treatments:read');
+  requirePermission(tenant.permissions, 'treatments:read');
   const { status } = res.locals.validatedParams as z.infer<typeof boardColumnParams>;
   if (!isBoardColumn(status)) throw new ApiError(400, 'INVALID_COLUMN', 'Unknown board column');
   const query = res.locals.validatedQuery as z.infer<typeof boardColumnsQuery>;

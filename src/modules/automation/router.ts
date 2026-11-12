@@ -57,7 +57,7 @@ const serialize = (row: {
 
 automationRouter.get('/settings', validateQuery(automationSettingsQuery), async (req, res) => {
   const tenant = req.tenant!;
-  requirePermission(tenant.role, 'automation:manage');
+  requirePermission(tenant.permissions, 'automation:manage');
   const query = res.locals.validatedQuery as z.infer<typeof automationSettingsQuery>;
   const branchId = query.branch_id ?? null;
   const settings = await withTenant(tenant.organizationId, (tx) => findOrCreateSetting(tx, tenant.organizationId, branchId));
@@ -66,7 +66,7 @@ automationRouter.get('/settings', validateQuery(automationSettingsQuery), async 
 
 automationRouter.patch('/settings', validateBody(automationSettingsPatch), async (req, res) => {
   const tenant = req.tenant!;
-  requirePermission(tenant.role, 'automation:manage');
+  requirePermission(tenant.permissions, 'automation:manage');
   const input = req.body as z.infer<typeof automationSettingsPatch>;
   const branchId = input.branch_id ?? null;
   const settings = await withTenant(tenant.organizationId, async (tx) => {
@@ -97,7 +97,7 @@ automationRouter.patch('/settings', validateBody(automationSettingsPatch), async
 
 automationRouter.post('/kill-switch', validateBody(killSwitchInput), async (req, res) => {
   const tenant = req.tenant!;
-  requirePermission(tenant.role, 'automation:manage');
+  requirePermission(tenant.permissions, 'automation:manage');
   const input = req.body as z.infer<typeof killSwitchInput>;
   const branchId = input.branch_id ?? null;
   let cancelledCount = 0;
@@ -130,14 +130,14 @@ const ruleView = (key: AutomationRuleKey, row?: { enabled: boolean; params: unkn
 
 automationRouter.get('/rules', async (req, res) => {
   const tenant = req.tenant!;
-  requirePermission(tenant.role, 'automation:manage');
+  requirePermission(tenant.permissions, 'automation:manage');
   const rows = await withTenant(tenant.organizationId, (tx) => tx.automationRule.findMany());
   res.json({ data: automationRuleKeys.map((key) => ruleView(key, rows.find((row) => row.key === key))) });
 });
 
 automationRouter.patch('/rules/:key', validateParams(ruleParams), validateBody(rulePatch), async (req, res) => {
   const tenant = req.tenant!;
-  requirePermission(tenant.role, 'automation:manage');
+  requirePermission(tenant.permissions, 'automation:manage');
   const { key } = res.locals.validatedParams as z.infer<typeof ruleParams>;
   const input = req.body as z.infer<typeof rulePatch>;
   const row = await withTenant(tenant.organizationId, async (tx) => {
@@ -163,7 +163,7 @@ automationRouter.patch('/rules/:key', validateParams(ruleParams), validateBody(r
 
 automationRouter.post('/rules/:key/enroll', validateParams(ruleParams), validateBody(enrollInput), async (req, res) => {
   const tenant = req.tenant!;
-  if (!puede(tenant.role, 'automation:manage') && !puede(tenant.role, 'treatments:write')) throw new ApiError(403, 'FORBIDDEN', 'Permission denied');
+  if (!puede(tenant.permissions, 'automation:manage') && !puede(tenant.permissions, 'treatments:write')) throw new ApiError(403, 'FORBIDDEN', 'Permission denied');
   const { key } = res.locals.validatedParams as z.infer<typeof ruleParams>;
   const input = req.body as z.infer<typeof enrollInput>;
   const result = await withTenant(tenant.organizationId, async (tx) => {
@@ -184,7 +184,7 @@ automationRouter.post('/rules/:key/enroll', validateParams(ruleParams), validate
 /** Manual sweep of the time-based rules (also runs on a timer). */
 automationRouter.post('/run', async (req, res) => {
   const tenant = req.tenant!;
-  requirePermission(tenant.role, 'automation:manage');
+  requirePermission(tenant.permissions, 'automation:manage');
   res.json({ created: await runScheduledForOrganization(tenant.organizationId) });
 });
 
@@ -199,14 +199,14 @@ const whatsappAccountInput = z.object({
 
 automationRouter.get('/whatsapp-account', async (req, res) => {
   const tenant = req.tenant!;
-  requirePermission(tenant.role, 'automation:manage');
+  requirePermission(tenant.permissions, 'automation:manage');
   const account = await withTenant(tenant.organizationId, (tx) => tx.whatsappAccount.findFirst());
   res.json({ connected: Boolean(account), phone_number_id: account?.phoneNumberId ?? null });
 });
 
 automationRouter.put('/whatsapp-account', validateBody(whatsappAccountInput), async (req, res) => {
   const tenant = req.tenant!;
-  requirePermission(tenant.role, 'automation:manage');
+  requirePermission(tenant.permissions, 'automation:manage');
   const input = req.body as z.infer<typeof whatsappAccountInput>;
   const accessTokenEnc = encryptSecret(input.access_token);
   try {
@@ -228,7 +228,7 @@ automationRouter.put('/whatsapp-account', validateBody(whatsappAccountInput), as
 
 automationRouter.delete('/whatsapp-account', async (req, res) => {
   const tenant = req.tenant!;
-  requirePermission(tenant.role, 'automation:manage');
+  requirePermission(tenant.permissions, 'automation:manage');
   await withTenant(tenant.organizationId, async (tx) => {
     await tx.whatsappAccount.deleteMany({});
     await record(tx, { organizationId: tenant.organizationId, actorId: tenant.userId, action: 'automation.whatsapp_account.delete' });
@@ -247,14 +247,14 @@ const telegramAccountInput = z.object({
 
 automationRouter.get('/telegram-account', async (req, res) => {
   const tenant = req.tenant!;
-  requirePermission(tenant.role, 'automation:manage');
+  requirePermission(tenant.permissions, 'automation:manage');
   const account = await withTenant(tenant.organizationId, (tx) => tx.telegramAccount.findFirst());
   res.json({ connected: Boolean(account), bot_username: account?.botUsername ?? null });
 });
 
 automationRouter.put('/telegram-account', validateBody(telegramAccountInput), async (req, res) => {
   const tenant = req.tenant!;
-  requirePermission(tenant.role, 'automation:manage');
+  requirePermission(tenant.permissions, 'automation:manage');
   const { bot_token: token } = req.body as z.infer<typeof telegramAccountInput>;
   const webhookKey = randomBytes(24).toString('hex');
   const webhookSecret = randomBytes(32).toString('hex');
@@ -291,7 +291,7 @@ automationRouter.put('/telegram-account', validateBody(telegramAccountInput), as
 
 automationRouter.delete('/telegram-account', async (req, res) => {
   const tenant = req.tenant!;
-  requirePermission(tenant.role, 'automation:manage');
+  requirePermission(tenant.permissions, 'automation:manage');
   const account = await withTenant(tenant.organizationId, async (tx) => {
     const current = await tx.telegramAccount.findFirst();
     if (!current) return null;

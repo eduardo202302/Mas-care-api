@@ -1316,8 +1316,8 @@ model LabelTemplate {
   branchId       String?      @map("branch_id")
   name           String
   description    String?
-  widthMm        Decimal      @default(100) @map("width_mm") @db.Decimal(6, 2)
-  heightMm       Decimal      @default(60) @map("height_mm") @db.Decimal(6, 2)
+  widthIn        Decimal      @default(3) @map("width_in") @db.Decimal(6, 2)
+  heightIn       Decimal      @default(3) @map("height_in") @db.Decimal(6, 2)
   orientation    String       @default("landscape")
   elements       Json         @default("[]")
   isDefault      Boolean      @default(false) @map("is_default")
@@ -1609,7 +1609,8 @@ model Role {
   key            String?
   name           String
   description    String?
-  baseRole       String         @map("base_role")
+  permissions    String[]       @default([])
+  allBranches    Boolean        @default(false) @map("all_branches")
   isSystem       Boolean        @default(false) @map("is_system")
   isActive       Boolean        @default(true) @map("is_active")
   createdAt      DateTime       @default(now()) @map("created_at")

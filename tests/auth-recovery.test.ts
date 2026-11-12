@@ -137,7 +137,7 @@ describe.skipIf(!enabled)('POST /api/v1/register', () => {
     expect(res.body.user.username).toBe(`testuser_${tag}`);
     expect(res.body.user.phone).toBe('3101234567');
     expect(res.body.organization).toHaveProperty('id');
-    expect(res.body.role).toBe('owner');
+    expect(res.body.roleName).toBe('Master');
     expect(res.headers['set-cookie']).toBeDefined();
 
     const stored = await prisma.user.findUnique({

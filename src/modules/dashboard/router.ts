@@ -125,7 +125,7 @@ async function scopedWhere(
 
 dashboardRouter.get('/', validateQuery(dashboardQuery), async (req, res) => {
   const tenant = req.tenant!;
-  requirePermission(tenant.role, 'dashboard:read');
+  requirePermission(tenant.permissions, 'dashboard:read');
   const { branch_id } = res.locals.validatedQuery as z.infer<typeof dashboardQuery>;
   const result = await withTenant(tenant.organizationId, async (tx) => {
     const settings = await settingFor(tx, tenant.organizationId);
@@ -247,7 +247,7 @@ async function extraBranchMetrics(
 
 dashboardRouter.get('/consolidated', validateQuery(dashboardConsolidatedQuery), async (req, res) => {
   const tenant = req.tenant!;
-  requirePermission(tenant.role, 'dashboard:read');
+  requirePermission(tenant.permissions, 'dashboard:read');
   const { date } = res.locals.validatedQuery as z.infer<typeof dashboardConsolidatedQuery>;
   const result = await withTenant(tenant.organizationId, async (tx) => {
     const settings = await settingFor(tx, tenant.organizationId);
@@ -300,7 +300,7 @@ dashboardRouter.get('/consolidated', validateQuery(dashboardConsolidatedQuery), 
 
 dashboardRouter.get('/list', validateQuery(dashboardListQuery), async (req, res) => {
   const tenant = req.tenant!;
-  requirePermission(tenant.role, 'dashboard:read');
+  requirePermission(tenant.permissions, 'dashboard:read');
   const query = res.locals.validatedQuery as z.infer<typeof dashboardListQuery>;
   const card = parseDashboardCard(query.card);
   if (!card) throw new ApiError(400, 'INVALID_CARD', 'Unknown dashboard card');

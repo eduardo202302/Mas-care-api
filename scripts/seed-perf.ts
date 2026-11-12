@@ -20,7 +20,7 @@ const organization = await prisma.organization.findFirst({ where: { slug: ORG_SL
 if (!organization) throw new Error(`Organization "${ORG_SLUG}" not found. Seed the database first.`);
 
 const members = await prisma.member.findMany({ where: { organizationId: organization.id }, orderBy: { createdAt: 'asc' } });
-const owner = members.find((member) => member.role === 'owner') ?? members[0];
+const owner = members[0];
 if (!owner) throw new Error('No member available to own performance data.');
 
 const today = new Date();

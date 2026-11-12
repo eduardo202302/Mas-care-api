@@ -22,10 +22,7 @@ La API queda en `http://localhost:3000`; comprueba `/api/v1/health` y `/api/v1/o
 
 ## Cuenta de desarrollo
 
-El seed solo corre con `NODE_ENV=development` y es idempotente. Crea dos organizaciones (`MAS CARE A` y `MAS CARE B`), dos sucursales por organización, pacientes de ejemplo y un usuario por rol en cada una. Todas las cuentas usan `MaxCareDev-2026!`:
-
-- `owner.a@maxcare.test`, `admin.a@maxcare.test`, `pharmacist.a@maxcare.test`, `operator.a@maxcare.test`, `read_only.a@maxcare.test`
-- Las mismas cuentas con `.b` para la organización B.
+El seed solo corre con `NODE_ENV=development` y es idempotente. Crea el menú, una compañía llamada `master`, su rol Master (todos los permisos, sucursales y pantallas) y un usuario `master`. No crea sucursales, pacientes, medicamentos ni plantillas. Inicia sesión con `master@maxcare.test` y la contraseña `ik2020` (el seed imprime el PIN de recuperación la primera vez).
 
 Estas credenciales son solo para desarrollo; no las uses en producción.
 
@@ -85,7 +82,7 @@ $env:TEST_DIRECT_URL='postgresql://maxcare:maxcare_dev@localhost:5432/maxcare_te
 npm run test:db
 ```
 
-`npm run test:db` crea la base si no existe, aplica migraciones, hace bootstrap del rol, ejecuta el seed y corre `npm test` con `RUN_DB_TESTS=1`.
+`npm run test:db` crea la base si no existe, aplica migraciones, hace bootstrap del rol, ejecuta el seed de pruebas (`prisma/seed-test.ts`: dos organizaciones con sucursales, pacientes y roles de prueba) y corre `npm test` con `RUN_DB_TESTS=1`.
 
 ## Fase 1.3: panel del día, entregas, tareas e importación
 

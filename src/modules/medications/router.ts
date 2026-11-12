@@ -36,7 +36,7 @@ const requirePermission = (role: Parameters<typeof puede>[0], action: Parameters
 
 medicationsRouter.get('/', validateQuery(medicationListQuery), async (req, res) => {
   const tenant = req.tenant!;
-  requirePermission(tenant.role, 'medications:read');
+  requirePermission(tenant.permissions, 'medications:read');
   const query = res.locals.validatedQuery as z.infer<typeof medicationListQuery>;
   const where: Prisma.MedicationWhereInput = {
     archivedAt: query.archived ? { not: null } : null,
@@ -70,9 +70,9 @@ medicationsRouter.get('/', validateQuery(medicationListQuery), async (req, res) 
 
 medicationsRouter.get('/:id/patients', validateParams(medicationParams), async (req, res) => {
   const tenant = req.tenant!;
-  requirePermission(tenant.role, 'medications:read');
-  requirePermission(tenant.role, 'patients:read');
-  requirePermission(tenant.role, 'treatments:read');
+  requirePermission(tenant.permissions, 'medications:read');
+  requirePermission(tenant.permissions, 'patients:read');
+  requirePermission(tenant.permissions, 'treatments:read');
   const { id } = res.locals.validatedParams as z.infer<typeof medicationParams>;
   const data = await withTenant(tenant.organizationId, async (tx) => {
     const medication = await tx.medication.findFirst({ where: { id }, select: { id: true } });
@@ -107,7 +107,7 @@ medicationsRouter.get('/:id/patients', validateParams(medicationParams), async (
 
 medicationsRouter.post('/', validateBody(medicationCreate), async (req, res) => {
   const tenant = req.tenant!;
-  requirePermission(tenant.role, 'medications:write');
+  requirePermission(tenant.permissions, 'medications:write');
   const input = req.body as z.infer<typeof medicationCreate>;
   const medication = await withTenant(tenant.organizationId, async (tx) => {
     const data = Object.fromEntries(Object.entries(input).filter(([, value]) => value !== undefined));
@@ -120,7 +120,7 @@ medicationsRouter.post('/', validateBody(medicationCreate), async (req, res) => 
 
 medicationsRouter.get('/:id', validateParams(medicationParams), async (req, res) => {
   const tenant = req.tenant!;
-  requirePermission(tenant.role, 'medications:read');
+  requirePermission(tenant.permissions, 'medications:read');
   const { id } = res.locals.validatedParams as z.infer<typeof medicationParams>;
   const medication = await withTenant(tenant.organizationId, (tx) => tx.medication.findFirst({
     where: { id, archivedAt: null },
@@ -133,7 +133,7 @@ medicationsRouter.get('/:id', validateParams(medicationParams), async (req, res)
 
 medicationsRouter.get('/:id/attachments', validateParams(medicationParams), async (req, res) => {
   const tenant = req.tenant!;
-  requirePermission(tenant.role, 'medications:read');
+  requirePermission(tenant.permissions, 'medications:read');
   const { id } = res.locals.validatedParams as z.infer<typeof medicationParams>;
   const data = await withTenant(tenant.organizationId, async (tx) => {
     const medication = await tx.medication.findFirst({ where: { id } });
@@ -151,7 +151,7 @@ medicationsRouter.post('/:id/attachments', validateParams(medicationParams), med
   const tenant = req.tenant!;
   const file = req.file;
   try {
-    requirePermission(tenant.role, 'medications:write');
+    requirePermission(tenant.permissions, 'medications:write');
     const { id } = res.locals.validatedParams as z.infer<typeof medicationParams>;
     if (!file) throw new ApiError(400, 'VALIDATION_ERROR', 'Adjunta una imagen (JPG, PNG, WEBP, GIF) o un documento (PDF, Word, Excel, TXT) de hasta 10 MB');
     const kind = medicationAttachmentKind(file.mimetype);
@@ -187,7 +187,7 @@ medicationsRouter.post('/:id/attachments', validateParams(medicationParams), med
 
 medicationsRouter.get('/:id/attachments/:attachmentId/file', validateParams(medicationAttachmentParams), async (req, res) => {
   const tenant = req.tenant!;
-  requirePermission(tenant.role, 'medications:read');
+  requirePermission(tenant.permissions, 'medications:read');
   const { id, attachmentId } = res.locals.validatedParams as z.infer<typeof medicationAttachmentParams>;
   const attachment = await withTenant(tenant.organizationId, (tx) => tx.medicationAttachment.findFirst({ where: { id: attachmentId, medicationId: id } }));
   if (!attachment) throw new ApiError(404, 'NOT_FOUND', 'Attachment not found');
@@ -199,7 +199,7 @@ medicationsRouter.get('/:id/attachments/:attachmentId/file', validateParams(medi
 
 medicationsRouter.post('/:id/attachments/:attachmentId/primary', validateParams(medicationAttachmentParams), async (req, res) => {
   const tenant = req.tenant!;
-  requirePermission(tenant.role, 'medications:write');
+  requirePermission(tenant.permissions, 'medications:write');
   const { id, attachmentId } = res.locals.validatedParams as z.infer<typeof medicationAttachmentParams>;
   const updated = await withTenant(tenant.organizationId, async (tx) => {
     const attachment = await tx.medicationAttachment.findFirst({ where: { id: attachmentId, medicationId: id } });
@@ -219,7 +219,7 @@ medicationsRouter.post('/:id/attachments/:attachmentId/primary', validateParams(
 
 medicationsRouter.delete('/:id/attachments/:attachmentId', validateParams(medicationAttachmentParams), async (req, res) => {
   const tenant = req.tenant!;
-  requirePermission(tenant.role, 'medications:write');
+  requirePermission(tenant.permissions, 'medications:write');
   const { id, attachmentId } = res.locals.validatedParams as z.infer<typeof medicationAttachmentParams>;
   const storagePath = await withTenant(tenant.organizationId, async (tx) => {
     const attachment = await tx.medicationAttachment.findFirst({ where: { id: attachmentId, medicationId: id } });
@@ -243,7 +243,7 @@ medicationsRouter.delete('/:id/attachments/:attachmentId', validateParams(medica
 
 medicationsRouter.patch('/:id', validateParams(medicationParams), validateBody(medicationPatch), async (req, res) => {
   const tenant = req.tenant!;
-  requirePermission(tenant.role, 'medications:write');
+  requirePermission(tenant.permissions, 'medications:write');
   const { id } = res.locals.validatedParams as z.infer<typeof medicationParams>;
   const input = req.body as z.infer<typeof medicationPatch>;
   const medication = await withTenant(tenant.organizationId, async (tx) => {
@@ -269,7 +269,7 @@ medicationsRouter.patch('/:id', validateParams(medicationParams), validateBody(m
 
 medicationsRouter.post('/:id/archive', validateParams(medicationParams), async (req, res) => {
   const tenant = req.tenant!;
-  requirePermission(tenant.role, 'medications:write');
+  requirePermission(tenant.permissions, 'medications:write');
   const { id } = res.locals.validatedParams as z.infer<typeof medicationParams>;
   const medication = await withTenant(tenant.organizationId, async (tx) => {
     const existing = await tx.medication.findFirst({ where: { id, archivedAt: null } });
@@ -286,7 +286,7 @@ medicationsRouter.post('/:id/archive', validateParams(medicationParams), async (
 
 medicationsRouter.post('/:id/restore', validateParams(medicationParams), async (req, res) => {
   const tenant = req.tenant!;
-  requirePermission(tenant.role, 'medications:write');
+  requirePermission(tenant.permissions, 'medications:write');
   const { id } = res.locals.validatedParams as z.infer<typeof medicationParams>;
   const medication = await withTenant(tenant.organizationId, async (tx) => {
     const existing = await tx.medication.findFirst({ where: { id, archivedAt: { not: null } } });

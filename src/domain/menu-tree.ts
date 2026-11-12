@@ -1,4 +1,4 @@
-import { menuItemId, systemRoleSeeds, type PermissionFlags } from './menu-defaults.js';
+import type { PermissionFlags } from './menu-defaults.js';
 
 export type MenuRow = {
   id: string;
@@ -107,11 +107,4 @@ export function withPlatformOwnerGrants(grants: readonly Grant[], catalog: reado
     .filter((item) => item.permission && (platformOwnerPermissions as readonly string[]).includes(item.permission) && !have.has(item.id))
     .map((item) => ({ menuItemId: item.id, canView: true, canCreate: true, canEdit: true, canDelete: true }));
   return [...grants, ...extra];
-}
-/** Menu grants of a built-in role (owner, admin, ...), which are defined in code and not stored. */
-export function builtInGrants(role: string, catalog: readonly MenuRow[]): Grant[] {
-  const seed = systemRoleSeeds.find((candidate) => candidate.key === role);
-  if (!seed) return [];
-  const allowed = seed.menuKeys === 'all' ? null : new Set(seed.menuKeys.map(menuItemId));
-  return allGrants(catalog.filter((item) => !allowed || allowed.has(item.id)), seed.flags);
 }

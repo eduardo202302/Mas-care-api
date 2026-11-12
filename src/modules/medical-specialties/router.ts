@@ -24,7 +24,7 @@ function isUniqueConflict(error: unknown) {
 
 medicalSpecialtiesRouter.get('/', validateQuery(specialtyListQuery), async (req, res) => {
   const tenant = req.tenant!;
-  requirePermission(tenant.role, 'specialties:read');
+  requirePermission(tenant.permissions, 'specialties:read');
   const query = res.locals.validatedQuery as z.infer<typeof specialtyListQuery>;
   const where: Prisma.MedicalSpecialtyWhereInput = {
     ...(query.isActive !== undefined ? { isActive: query.isActive === 'true' } : {}),
@@ -41,7 +41,7 @@ medicalSpecialtiesRouter.get('/', validateQuery(specialtyListQuery), async (req,
 medicalSpecialtiesRouter.post('/', validateBody(specialtyCreate), async (req, res, next) => {
   try {
     const tenant = req.tenant!;
-    requirePermission(tenant.role, 'specialties:write');
+    requirePermission(tenant.permissions, 'specialties:write');
     const input = req.body as z.infer<typeof specialtyCreate>;
     const specialty = await withTenant(tenant.organizationId, async (tx) => {
       let created;
@@ -64,7 +64,7 @@ medicalSpecialtiesRouter.post('/', validateBody(specialtyCreate), async (req, re
 
 medicalSpecialtiesRouter.get('/:id', validateParams(specialtyParams), async (req, res) => {
   const tenant = req.tenant!;
-  requirePermission(tenant.role, 'specialties:read');
+  requirePermission(tenant.permissions, 'specialties:read');
   const { id } = res.locals.validatedParams as z.infer<typeof specialtyParams>;
   const specialty = await withTenant(tenant.organizationId, (tx) => tx.medicalSpecialty.findUnique({ where: { id } }));
   if (!specialty) throw new ApiError(404, 'NOT_FOUND', 'Especialidad no encontrada.');
@@ -74,7 +74,7 @@ medicalSpecialtiesRouter.get('/:id', validateParams(specialtyParams), async (req
 medicalSpecialtiesRouter.patch('/:id', validateParams(specialtyParams), validateBody(specialtyPatch), async (req, res, next) => {
   try {
     const tenant = req.tenant!;
-    requirePermission(tenant.role, 'specialties:write');
+    requirePermission(tenant.permissions, 'specialties:write');
     const { id } = res.locals.validatedParams as z.infer<typeof specialtyParams>;
     const input = req.body as z.infer<typeof specialtyPatch>;
     const specialty = await withTenant(tenant.organizationId, async (tx) => {

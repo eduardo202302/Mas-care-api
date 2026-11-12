@@ -1,8 +1,6 @@
 import { z } from 'zod';
 import { pagingFields } from '../infra/pagination.js';
 
-export const assignableRoles = ['admin', 'pharmacist', 'operator', 'read_only'] as const;
-
 export const userListQuery = z.object({
   q: z.string().trim().max(120).optional(),
   cursor: z.string().min(1).optional(),
@@ -28,17 +26,15 @@ export const userCreate = z.object({
   phone: phone.optional(),
   password: z.string().min(8).max(128),
   pin: recoveryPin.optional(),
-  role: z.enum(assignableRoles).optional(),
-  roleId: z.string().min(1).optional(),
+  roleId: z.string().min(1, 'Selecciona un rol.'),
   branchIds: z.array(z.string().min(1)).max(50).default([]),
-}).strict().refine((value) => Boolean(value.role || value.roleId), { message: 'Selecciona un rol.', path: ['roleId'] });
+}).strict();
 
 export const userPatch = z.object({
   name: z.string().trim().min(2).max(120),
   username,
   email: z.string().trim().toLowerCase().email().max(254),
   phone: phone.nullable(),
-  role: z.enum(assignableRoles),
-  roleId: z.string().min(1).nullable(),
+  roleId: z.string().min(1),
   branchIds: z.array(z.string().min(1)).max(50).default([]),
 }).partial().strict();

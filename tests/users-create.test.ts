@@ -8,6 +8,13 @@ const enabled = process.env.RUN_DB_TESTS === '1';
 const password = 'MaxCareDev-2026!';
 const createdEmails: string[] = [];
 
+async function roleIdByName(agent: ReturnType<typeof request.agent>, name: string) {
+  const roles = (await agent.get('/api/v1/roles').expect(200)).body.data as Array<{ id: string; name: string }>;
+  const role = roles.find((candidate) => candidate.name === name);
+  if (!role) throw new Error(`Seed requires the "${name}" role`);
+  return role.id;
+}
+
 async function login(email: string) {
   const agent = request.agent(app);
   await agent.post('/api/auth/sign-in/email').send({ email, password }).expect(200);
@@ -39,14 +46,14 @@ describe.skipIf(!enabled)('user creation', () => {
         email,
         password: 'Created-Password-2026!',
         pin: '135790',
-        role: 'operator',
+        roleId: await roleIdByName(owner, 'Prueba Operador'),
         branchIds: [branch.id],
       })
       .expect(201);
 
     expect(created.body).toMatchObject({
       email,
-      role: 'operator',
+      roleName: 'Prueba Operador',
       username: `created-${suffix.slice(0, 8)}`,
       branches: [{ id: branch.id, name: branch.name }],
       pin: '135790',
@@ -80,13 +87,13 @@ describe.skipIf(!enabled)('user creation', () => {
         username: `nope-${suffix.slice(0, 8)}`,
         email: `nope-${suffix}@maxcare.test`,
         password: 'Created-Password-2026!',
-        role: 'read_only',
+        roleId: await roleIdByName(owner, 'Prueba Solo lectura'),
         branchIds: [branch.id],
       })
       .expect(403);
   });
 
-  it('rejects a non-admin user without branches and rolls back the account', async () => {
+  it('rejects a role without all-branches access when no branch is given and rolls back the account', async () => {
     const owner = await login('owner.a@maxcare.test');
     const email = `no-branch-${crypto.randomUUID()}@maxcare.test`;
     const response = await owner
@@ -96,7 +103,7 @@ describe.skipIf(!enabled)('user creation', () => {
         username: `nobranch-${crypto.randomUUID().slice(0, 8)}`,
         email,
         password: 'Created-Password-2026!',
-        role: 'operator',
+        roleId: await roleIdByName(owner, 'Prueba Operador'),
         branchIds: [],
       })
       .expect(400);

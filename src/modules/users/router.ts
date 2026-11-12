@@ -9,7 +9,7 @@ import { resolveTenant } from '../../infra/tenant.js';
 import { record } from '../audit/record.js';
 import { userCreate, userListQuery, userParams, userPatch } from '../../schemas/user.js';
 import { createPin, decryptPin } from '../../infra/pin-crypto.js';
-import { resolveAssignableRole } from '../roles/system-roles.js';
+import { assertCanAssignRole, countMasterHolders, isMasterRole, resolveAssignableRole, roleAllBranches } from '../roles/system-roles.js';
 
 export const usersRouter = Router();
 usersRouter.use(resolveTenant);
@@ -17,7 +17,7 @@ usersRouter.use(resolveTenant);
 usersRouter.post('/', async (req, res, next) => {
   try {
     const tenant = req.tenant!;
-    if (!puede(tenant.role, 'users:write')) throw new ApiError(403, 'FORBIDDEN', 'Insufficient permissions');
+    if (!puede(tenant.permissions, 'users:write')) throw new ApiError(403, 'FORBIDDEN', 'Insufficient permissions');
     const input = userCreate.parse(req.body);
 
     const existing = await prisma.user.findUnique({ where: { email: input.email } });
@@ -57,11 +57,8 @@ usersRouter.post('/', async (req, res, next) => {
     await prisma.session.deleteMany({ where: { userId: user.id } });
 
     const created = await withTenant(tenant.organizationId, async (tx) => {
-      const assigned = input.roleId ? await resolveAssignableRole(tx, input.roleId) : null;
-      const baseRole = assigned?.baseRole ?? input.role;
-      if (!baseRole) {
-        throw new ApiError(400, 'ROLE_REQUIRED', 'Selecciona un rol.', { roleId: 'Selecciona un rol.' });
-      }
+      const assigned = await resolveAssignableRole(tx, input.roleId);
+      assertCanAssignRole(tenant, assigned);
       const branchIds = [...new Set(input.branchIds)];
       const branches = branchIds.length
         ? await tx.branch.findMany({
@@ -74,7 +71,7 @@ usersRouter.post('/', async (req, res, next) => {
           branchIds: 'Selecciona sucursales activas de esta organización.',
         });
       }
-      if (baseRole !== 'admin' && branches.length === 0) {
+      if (!roleAllBranches(assigned) && branches.length === 0) {
         throw new ApiError(400, 'BRANCH_REQUIRED', 'Asigna al menos una sucursal.', {
           branchIds: 'Asigna al menos una sucursal.',
         });
@@ -85,8 +82,7 @@ usersRouter.post('/', async (req, res, next) => {
           id: crypto.randomUUID(),
           organizationId: tenant.organizationId,
           userId: user.id,
-          role: baseRole,
-          roleId: assigned?.customId ?? null,
+          roleId: assigned.id,
           createdAt: new Date(),
         },
       });
@@ -105,7 +101,7 @@ usersRouter.post('/', async (req, res, next) => {
         action: 'user.create',
         subjectId: user.id,
       });
-      return { member, branches, baseRole };
+      return { member, branches, role: assigned };
     }).catch(async (error) => {
       await prisma.user.delete({ where: { id: user.id } }).catch(() => undefined);
       throw error;
@@ -119,8 +115,8 @@ usersRouter.post('/', async (req, res, next) => {
       username: input.username,
       phone: input.phone ?? null,
       createdAt: user.createdAt,
-      role: created.baseRole,
       roleId: created.member.roleId,
+      roleName: created.role.name,
       memberSince: created.member.createdAt,
       branches: created.branches,
       pin: recoveryPin.pin,
@@ -132,7 +128,7 @@ usersRouter.post('/', async (req, res, next) => {
 usersRouter.get('/', async (req, res, next) => {
   try {
     const tenant = req.tenant!;
-    if (!puede(tenant.role, 'patients:read')) throw new ApiError(403, 'FORBIDDEN', 'Insufficient permissions');
+    if (!puede(tenant.permissions, 'patients:read')) throw new ApiError(403, 'FORBIDDEN', 'Insufficient permissions');
     const query = userListQuery.parse(req.query);
     const users = await withTenant(tenant.organizationId, async (tx) => {
       const where: Prisma.MemberWhereInput = {
@@ -147,7 +143,6 @@ usersRouter.get('/', async (req, res, next) => {
         where,
         select: {
           id: true,
-          role: true,
           roleId: true,
           roleRef: { select: { name: true } },
           createdAt: true,
@@ -166,7 +161,7 @@ usersRouter.get('/', async (req, res, next) => {
         skip: args.skip,
         ...(args.cursor ? { cursor: { id: args.cursor } } : {}),
       }), () => tx.member.count({ where }));
-      const rows = result.data.map(({ user, role, roleId, roleRef, createdAt }) => ({
+      const rows = result.data.map(({ user, roleId, roleRef, createdAt }) => ({
         id: user.id,
         numericId: user.numericId,
         name: user.name,
@@ -174,7 +169,6 @@ usersRouter.get('/', async (req, res, next) => {
         email: user.email,
         phone: user.phone,
         createdAt: user.createdAt,
-        role,
         roleId,
         roleName: roleRef?.name ?? null,
         memberSince: createdAt,
@@ -189,13 +183,12 @@ usersRouter.get('/', async (req, res, next) => {
 usersRouter.get('/:id', async (req, res, next) => {
   try {
     const tenant = req.tenant!;
-    if (!puede(tenant.role, 'patients:read')) throw new ApiError(403, 'FORBIDDEN', 'Insufficient permissions');
+    if (!puede(tenant.permissions, 'patients:read')) throw new ApiError(403, 'FORBIDDEN', 'Insufficient permissions');
     const { id } = userParams.parse(req.params);
     const user = await withTenant(tenant.organizationId, async (tx) => {
       const member = await tx.member.findFirst({
         where: { organizationId: tenant.organizationId, userId: id },
         select: {
-          role: true,
           roleId: true,
           roleRef: { select: { name: true } },
           createdAt: true,
@@ -213,7 +206,7 @@ usersRouter.get('/:id', async (req, res, next) => {
       });
       if (!member) return null;
       const canViewPin =
-        puede(tenant.role, 'users:write') || tenant.userId === member.user.id;
+        puede(tenant.permissions, 'users:write') || tenant.userId === member.user.id;
       const pin = canViewPin && member.user.passwordPinEncrypted
         ? decryptPin(member.user.passwordPinEncrypted)
         : null;
@@ -225,7 +218,6 @@ usersRouter.get('/:id', async (req, res, next) => {
         username: member.user.username,
         phone: member.user.phone,
         createdAt: member.user.createdAt,
-        role: member.role,
         roleId: member.roleId,
         roleName: member.roleRef?.name ?? null,
         memberSince: member.createdAt,
@@ -246,7 +238,7 @@ usersRouter.get('/:id', async (req, res, next) => {
 usersRouter.patch('/:id', async (req, res, next) => {
   try {
     const tenant = req.tenant!;
-    if (!puede(tenant.role, 'users:write')) throw new ApiError(403, 'FORBIDDEN', 'Insufficient permissions');
+    if (!puede(tenant.permissions, 'users:write')) throw new ApiError(403, 'FORBIDDEN', 'Insufficient permissions');
     const { id } = userParams.parse(req.params);
     const input = userPatch.parse(req.body);
     if (Object.keys(input).length === 0) {
@@ -255,14 +247,9 @@ usersRouter.patch('/:id', async (req, res, next) => {
 
     const member = await prisma.member.findFirst({
       where: { organizationId: tenant.organizationId, userId: id },
-      select: { id: true, role: true },
+      select: { id: true, roleId: true },
     });
     if (!member) throw new ApiError(404, 'USER_NOT_FOUND', 'User not found in this organization');
-    if ((input.role !== undefined || input.roleId !== undefined) && member.role === 'owner') {
-      throw new ApiError(400, 'OWNER_ROLE_LOCKED', 'No se puede cambiar el rol del propietario.', {
-        role: 'No se puede cambiar el rol del propietario.',
-      });
-    }
     if (input.email !== undefined) {
       const taken = await prisma.user.findFirst({
         where: { email: input.email, NOT: { id } },
@@ -289,8 +276,18 @@ usersRouter.patch('/:id', async (req, res, next) => {
 
     await withTenant(tenant.organizationId, async (tx) => {
       const assigned = input.roleId ? await resolveAssignableRole(tx, input.roleId) : null;
-      const nextRole = assigned?.baseRole ?? input.role;
-      const effectiveRole = nextRole ?? member.role;
+      if (assigned) assertCanAssignRole(tenant, assigned);
+      // The organization must always keep at least one Master.
+      if (assigned && !isMasterRole(assigned) && member.roleId && member.roleId !== assigned.id) {
+        const current = await tx.role.findFirst({ where: { id: member.roleId } });
+        if (current && isMasterRole(current) && await countMasterHolders(tx, tenant.organizationId) <= 1) {
+          throw new ApiError(400, 'LAST_MASTER', 'La organización debe conservar al menos un usuario con el rol Master.', {
+            roleId: 'Es el único usuario Master: asigna ese rol a otra persona primero.',
+          });
+        }
+      }
+      const effectiveRole = assigned ?? (member.roleId ? await tx.role.findFirst({ where: { id: member.roleId } }) : null);
+      const hasAllBranches = effectiveRole ? roleAllBranches(effectiveRole) : false;
       if (input.branchIds !== undefined) {
         const branchIds = [...new Set(input.branchIds)];
         const branches = branchIds.length
@@ -304,7 +301,7 @@ usersRouter.patch('/:id', async (req, res, next) => {
             branchIds: 'Selecciona sucursales activas de esta organización.',
           });
         }
-        if (effectiveRole !== 'admin' && effectiveRole !== 'owner' && branches.length === 0) {
+        if (!hasAllBranches && branches.length === 0) {
           throw new ApiError(400, 'BRANCH_REQUIRED', 'Asigna al menos una sucursal.', {
             branchIds: 'Asigna al menos una sucursal.',
           });
@@ -320,14 +317,8 @@ usersRouter.patch('/:id', async (req, res, next) => {
           });
         }
       }
-      if (nextRole !== undefined || input.roleId !== undefined) {
-        await tx.member.update({
-          where: { id: member.id },
-          data: {
-            ...(nextRole !== undefined ? { role: nextRole } : {}),
-            ...(input.roleId !== undefined ? { roleId: assigned?.customId ?? null } : {}),
-          },
-        });
+      if (assigned) {
+        await tx.member.update({ where: { id: member.id }, data: { roleId: assigned.id } });
       }
       await record(tx, {
         organizationId: tenant.organizationId,
@@ -358,7 +349,6 @@ usersRouter.patch('/:id', async (req, res, next) => {
       tx.member.findFirstOrThrow({
         where: { organizationId: tenant.organizationId, userId: id },
         select: {
-          role: true,
           roleId: true,
           roleRef: { select: { name: true } },
           createdAt: true,
@@ -382,7 +372,6 @@ usersRouter.patch('/:id', async (req, res, next) => {
       username: updated.user.username,
       phone: updated.user.phone,
       createdAt: updated.user.createdAt,
-      role: updated.role,
       roleId: updated.roleId,
       roleName: updated.roleRef?.name ?? null,
       memberSince: updated.createdAt,
@@ -394,7 +383,7 @@ usersRouter.patch('/:id', async (req, res, next) => {
 usersRouter.post('/:id/pin', async (req, res, next) => {
   try {
     const tenant = req.tenant!;
-    if (!puede(tenant.role, 'users:write')) throw new ApiError(403, 'FORBIDDEN', 'Insufficient permissions');
+    if (!puede(tenant.permissions, 'users:write')) throw new ApiError(403, 'FORBIDDEN', 'Insufficient permissions');
     const { id } = userParams.parse(req.params);
     const member = await prisma.member.findFirst({
       where: { organizationId: tenant.organizationId, userId: id },

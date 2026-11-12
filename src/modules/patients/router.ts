@@ -131,7 +131,7 @@ function patientOrder(sort?: string[]): Prisma.PatientOrderByWithRelationInput[]
 
 patientsRouter.get('/', validateQuery(patientListQuery), async (req, res) => {
   const tenant = req.tenant!;
-  requirePermission(tenant.role, 'patients:read');
+  requirePermission(tenant.permissions, 'patients:read');
   const query = res.locals.validatedQuery as z.infer<typeof patientListQuery>;
   const result = await withTenant(tenant.organizationId, async (tx) => {
     const filters: Prisma.PatientWhereInput = {
@@ -173,7 +173,7 @@ patientsRouter.get('/', validateQuery(patientListQuery), async (req, res) => {
 
 patientsRouter.post('/check-duplicates', validateBody(duplicateCheck), async (req, res) => {
   const tenant = req.tenant!;
-  requirePermission(tenant.role, 'patients:write');
+  requirePermission(tenant.permissions, 'patients:write');
   const input = req.body as z.infer<typeof duplicateCheck>;
   const matches = await withTenant(tenant.organizationId, async (tx) => {
     const where = await patientWhere(tx, tenant, { ...duplicateWhere(input), archivedAt: null });
@@ -191,7 +191,7 @@ patientsRouter.post('/check-duplicates', validateBody(duplicateCheck), async (re
 
 patientsRouter.post('/', validateBody(patientCreate), async (req, res) => {
   const tenant = req.tenant!;
-  requirePermission(tenant.role, 'patients:write');
+  requirePermission(tenant.permissions, 'patients:write');
   const input = req.body as z.infer<typeof patientCreate>;
   const result = await withTenant(tenant.organizationId, async (tx) => {
     if (!await canAccessBranch(tx, tenant, input.primaryBranchId)) throw new ApiError(404, 'NOT_FOUND', 'Branch not found');
@@ -223,7 +223,7 @@ patientsRouter.post('/', validateBody(patientCreate), async (req, res) => {
 
 patientsRouter.get('/:id', validateParams(patientParams), async (req, res) => {
   const tenant = req.tenant!;
-  requirePermission(tenant.role, 'patients:read');
+  requirePermission(tenant.permissions, 'patients:read');
   const { id } = res.locals.validatedParams as z.infer<typeof patientParams>;
   const patient = await withTenant(tenant.organizationId, async (tx) => {
     const row = await findAccessiblePatient(tx, tenant, id);
@@ -244,7 +244,7 @@ patientsRouter.get('/:id', validateParams(patientParams), async (req, res) => {
 
 patientsRouter.patch('/:id', validateParams(patientParams), validateBody(patientPatch), async (req, res) => {
   const tenant = req.tenant!;
-  requirePermission(tenant.role, 'patients:write');
+  requirePermission(tenant.permissions, 'patients:write');
   const { id } = res.locals.validatedParams as z.infer<typeof patientParams>;
   const input = req.body as z.infer<typeof patientPatch>;
   const patient = await withTenant(tenant.organizationId, async (tx) => {
@@ -283,7 +283,7 @@ patientsRouter.patch('/:id', validateParams(patientParams), validateBody(patient
 
 patientsRouter.post('/:id/archive', validateParams(patientParams), async (req, res) => {
   const tenant = req.tenant!;
-  requirePermission(tenant.role, 'patients:archive');
+  requirePermission(tenant.permissions, 'patients:archive');
   const { id } = res.locals.validatedParams as z.infer<typeof patientParams>;
   const patient = await withTenant(tenant.organizationId, async (tx) => {
     const existing = await findAccessiblePatient(tx, tenant, id, { archivedAt: null });
@@ -303,7 +303,7 @@ patientsRouter.post('/:id/archive', validateParams(patientParams), async (req, r
 
 patientsRouter.post('/:id/restore', validateParams(patientParams), async (req, res) => {
   const tenant = req.tenant!;
-  requirePermission(tenant.role, 'patients:archive');
+  requirePermission(tenant.permissions, 'patients:archive');
   const { id } = res.locals.validatedParams as z.infer<typeof patientParams>;
   const patient = await withTenant(tenant.organizationId, async (tx) => {
     const existing = await findAccessiblePatient(tx, tenant, id, { archivedAt: { not: null } });
@@ -323,7 +323,7 @@ patientsRouter.post('/:id/restore', validateParams(patientParams), async (req, r
 
 patientsRouter.get('/:id/caregivers', validateParams(patientParams), async (req, res) => {
   const tenant = req.tenant!;
-  requirePermission(tenant.role, 'patients:read');
+  requirePermission(tenant.permissions, 'patients:read');
   const { id } = res.locals.validatedParams as z.infer<typeof patientParams>;
   const data = await withTenant(tenant.organizationId, async (tx) => {
     if (!await findAccessiblePatient(tx, tenant, id)) throw new ApiError(404, 'NOT_FOUND', 'Patient not found');
@@ -334,7 +334,7 @@ patientsRouter.get('/:id/caregivers', validateParams(patientParams), async (req,
 
 patientsRouter.post('/:id/caregivers', validateParams(patientParams), validateBody(caregiverInput), async (req, res) => {
   const tenant = req.tenant!;
-  requirePermission(tenant.role, 'patients:write');
+  requirePermission(tenant.permissions, 'patients:write');
   const { id } = res.locals.validatedParams as z.infer<typeof patientParams>;
   const input = req.body as z.infer<typeof caregiverInput>;
   const caregiver = await withTenant(tenant.organizationId, async (tx) => {
@@ -354,7 +354,7 @@ patientsRouter.post('/:id/caregivers', validateParams(patientParams), validateBo
 
 patientsRouter.patch('/:id/caregivers/:caregiverId', validateParams(caregiverParams), validateBody(caregiverPatch), async (req, res) => {
   const tenant = req.tenant!;
-  requirePermission(tenant.role, 'patients:write');
+  requirePermission(tenant.permissions, 'patients:write');
   const { id, caregiverId } = res.locals.validatedParams as z.infer<typeof caregiverParams>;
   const input = req.body as z.infer<typeof caregiverPatch>;
   const caregiver = await withTenant(tenant.organizationId, async (tx) => {
@@ -373,7 +373,7 @@ patientsRouter.patch('/:id/caregivers/:caregiverId', validateParams(caregiverPar
 
 patientsRouter.delete('/:id/caregivers/:caregiverId', validateParams(caregiverParams), async (req, res) => {
   const tenant = req.tenant!;
-  requirePermission(tenant.role, 'patients:write');
+  requirePermission(tenant.permissions, 'patients:write');
   const { id, caregiverId } = res.locals.validatedParams as z.infer<typeof caregiverParams>;
   await withTenant(tenant.organizationId, async (tx) => {
     if (!await findAccessiblePatient(tx, tenant, id, { archivedAt: null })) throw new ApiError(404, 'NOT_FOUND', 'Patient not found');
@@ -387,7 +387,7 @@ patientsRouter.delete('/:id/caregivers/:caregiverId', validateParams(caregiverPa
 
 patientsRouter.post('/:id/consent', validateParams(patientParams), validateBody(consentInput), async (req, res) => {
   const tenant = req.tenant!;
-  requirePermission(tenant.role, 'patients:write');
+  requirePermission(tenant.permissions, 'patients:write');
   const { id } = res.locals.validatedParams as z.infer<typeof patientParams>;
   const input = req.body as z.infer<typeof consentInput>;
   const consent = await withTenant(tenant.organizationId, async (tx) => {
@@ -412,7 +412,7 @@ patientsRouter.post('/:id/consent', validateParams(patientParams), validateBody(
 
 patientsRouter.get('/:id/doctors', validateParams(patientParams), async (req, res) => {
   const tenant = req.tenant!;
-  requirePermission(tenant.role, 'patients:read');
+  requirePermission(tenant.permissions, 'patients:read');
   const { id } = res.locals.validatedParams as z.infer<typeof patientParams>;
   const data = await withTenant(tenant.organizationId, async (tx) => {
     if (!await findAccessiblePatient(tx, tenant, id)) throw new ApiError(404, 'NOT_FOUND', 'Patient not found');
@@ -436,7 +436,7 @@ patientsRouter.get('/:id/doctors', validateParams(patientParams), async (req, re
 patientsRouter.post('/:id/doctors', validateParams(patientParams), validateBody(patientDoctorInput), async (req, res, next) => {
   try {
     const tenant = req.tenant!;
-    requirePermission(tenant.role, 'patients:write');
+    requirePermission(tenant.permissions, 'patients:write');
     const { id } = res.locals.validatedParams as z.infer<typeof patientParams>;
     const input = req.body as z.infer<typeof patientDoctorInput>;
     const link = await withTenant(tenant.organizationId, async (tx) => {
@@ -473,7 +473,7 @@ patientsRouter.post('/:id/doctors', validateParams(patientParams), validateBody(
 patientsRouter.patch('/:id/doctors/:doctorId', validateParams(patientDoctorParams), validateBody(patientDoctorPatch), async (req, res, next) => {
   try {
     const tenant = req.tenant!;
-    requirePermission(tenant.role, 'patients:write');
+    requirePermission(tenant.permissions, 'patients:write');
     const { id, doctorId } = res.locals.validatedParams as z.infer<typeof patientDoctorParams>;
     const input = req.body as z.infer<typeof patientDoctorPatch>;
     const link = await withTenant(tenant.organizationId, async (tx) => {
@@ -513,7 +513,7 @@ patientsRouter.patch('/:id/doctors/:doctorId', validateParams(patientDoctorParam
 
 patientsRouter.get('/:id/conditions', validateParams(patientParams), async (req, res) => {
   const tenant = req.tenant!;
-  requirePermission(tenant.role, 'patients:read');
+  requirePermission(tenant.permissions, 'patients:read');
   const { id } = res.locals.validatedParams as z.infer<typeof patientParams>;
   const data = await withTenant(tenant.organizationId, async (tx) => {
     if (!await findAccessiblePatient(tx, tenant, id)) throw new ApiError(404, 'NOT_FOUND', 'Patient not found');
@@ -529,7 +529,7 @@ patientsRouter.get('/:id/conditions', validateParams(patientParams), async (req,
 patientsRouter.post('/:id/conditions', validateParams(patientParams), validateBody(patientConditionInput), async (req, res, next) => {
   try {
     const tenant = req.tenant!;
-    requirePermission(tenant.role, 'patients:write');
+    requirePermission(tenant.permissions, 'patients:write');
     const { id } = res.locals.validatedParams as z.infer<typeof patientParams>;
     const input = req.body as z.infer<typeof patientConditionInput>;
     const link = await withTenant(tenant.organizationId, async (tx) => {
@@ -568,7 +568,7 @@ patientsRouter.post('/:id/conditions', validateParams(patientParams), validateBo
 patientsRouter.patch('/:id/conditions/:conditionId', validateParams(patientConditionParams), validateBody(patientConditionPatch), async (req, res, next) => {
   try {
     const tenant = req.tenant!;
-    requirePermission(tenant.role, 'patients:write');
+    requirePermission(tenant.permissions, 'patients:write');
     const { id, conditionId } = res.locals.validatedParams as z.infer<typeof patientConditionParams>;
     const input = req.body as z.infer<typeof patientConditionPatch>;
     const link = await withTenant(tenant.organizationId, async (tx) => {
@@ -606,7 +606,7 @@ patientsRouter.patch('/:id/conditions/:conditionId', validateParams(patientCondi
 
 patientsRouter.get('/:id/incidents', validateParams(patientParams), async (req, res) => {
   const tenant = req.tenant!;
-  requirePermission(tenant.role, 'patients:read');
+  requirePermission(tenant.permissions, 'patients:read');
   const { id } = res.locals.validatedParams as z.infer<typeof patientParams>;
   const data = await withTenant(tenant.organizationId, async (tx) => {
     if (!await findAccessiblePatient(tx, tenant, id)) throw new ApiError(404, 'NOT_FOUND', 'Patient not found');
@@ -631,7 +631,7 @@ patientsRouter.get('/:id/incidents', validateParams(patientParams), async (req, 
 
 patientsRouter.get('/:id/activities', validateParams(patientParams), validateQuery(activityListQuery), async (req, res) => {
   const tenant = req.tenant!;
-  requirePermission(tenant.role, 'patients:read');
+  requirePermission(tenant.permissions, 'patients:read');
   const { id } = res.locals.validatedParams as z.infer<typeof patientParams>;
   const query = res.locals.validatedQuery as z.infer<typeof activityListQuery>;
   const result = await withTenant(tenant.organizationId, async (tx) => {
@@ -653,7 +653,7 @@ patientsRouter.get('/:id/activities', validateParams(patientParams), validateQue
 
 patientsRouter.post('/:id/activities', validateParams(patientParams), validateBody(activityInput), async (req, res) => {
   const tenant = req.tenant!;
-  requirePermission(tenant.role, 'patients:write');
+  requirePermission(tenant.permissions, 'patients:write');
   const { id } = res.locals.validatedParams as z.infer<typeof patientParams>;
   const input = req.body as z.infer<typeof activityInput>;
   const activity = await withTenant(tenant.organizationId, async (tx) => {
@@ -728,7 +728,7 @@ function presentTransfer(transfer: Prisma.PatientTransferGetPayload<object>, ide
 
 patientsRouter.post('/:id/transfers', validateParams(patientParams), validateBody(transferInput), async (req, res) => {
   const tenant = req.tenant!;
-  requirePermission(tenant.role, 'patient:transfer');
+  requirePermission(tenant.permissions, 'patient:transfer');
   const { id } = res.locals.validatedParams as z.infer<typeof patientParams>;
   const input = req.body as z.infer<typeof transferInput>;
   const key = transferIdempotencyKey(req);
@@ -882,7 +882,7 @@ patientsRouter.post('/:id/transfers', validateParams(patientParams), validateBod
 
 patientsRouter.get('/:id/transfers', validateParams(patientParams), validateQuery(patientTransferListQuery), async (req, res) => {
   const tenant = req.tenant!;
-  requirePermission(tenant.role, 'patients:read');
+  requirePermission(tenant.permissions, 'patients:read');
   const { id } = res.locals.validatedParams as z.infer<typeof patientParams>;
   const query = res.locals.validatedQuery as z.infer<typeof patientTransferListQuery>;
   const result = await withTenant(tenant.organizationId, async (tx) => {
@@ -931,7 +931,7 @@ patientsRouter.get('/:id/transfers', validateParams(patientParams), validateQuer
  */
 patientsRouter.post('/:id/duplicate', validateParams(patientParams), async (req, res) => {
   const tenant = req.tenant!;
-  requirePermission(tenant.role, 'patients:write');
+  requirePermission(tenant.permissions, 'patients:write');
   const { id } = res.locals.validatedParams as z.infer<typeof patientParams>;
   const copy = await withTenant(tenant.organizationId, async (tx) => {
     const source = await findAccessiblePatient(tx, tenant, id);
@@ -963,7 +963,7 @@ const pauseInput = z.object({ paused: z.boolean(), reason: z.string().trim().max
 /** Pauses or resumes automatic notices for one patient. Pausing also cancels what was already waiting to go out. */
 patientsRouter.patch('/:id/automation', validateParams(patientParams), validateBody(pauseInput), async (req, res) => {
   const tenant = req.tenant!;
-  requirePermission(tenant.role, 'patients:write');
+  requirePermission(tenant.permissions, 'patients:write');
   const { id } = res.locals.validatedParams as z.infer<typeof patientParams>;
   const input = req.body as z.infer<typeof pauseInput>;
   const result = await withTenant(tenant.organizationId, async (tx) => {
@@ -997,7 +997,7 @@ const messagesQuery = z.object({
  */
 patientsRouter.get('/:id/messages', validateParams(patientParams), validateQuery(messagesQuery), async (req, res) => {
   const tenant = req.tenant!;
-  requirePermission(tenant.role, 'outbox:view');
+  requirePermission(tenant.permissions, 'outbox:view');
   const { id } = res.locals.validatedParams as z.infer<typeof patientParams>;
   const query = res.locals.validatedQuery as z.infer<typeof messagesQuery>;
   const before = query.before ? new Date(query.before) : undefined;
@@ -1038,7 +1038,7 @@ patientsRouter.get('/:id/messages', validateParams(patientParams), validateQuery
  */
 patientsRouter.post('/:id/telegram-link', validateParams(patientParams), async (req, res) => {
   const tenant = req.tenant!;
-  requirePermission(tenant.role, 'patients:write');
+  requirePermission(tenant.permissions, 'patients:write');
   const { id } = res.locals.validatedParams as z.infer<typeof patientParams>;
   const result = await withTenant(tenant.organizationId, async (tx) => {
     if (!await findAccessiblePatient(tx, tenant, id, { archivedAt: null })) throw new ApiError(404, 'NOT_FOUND', 'Patient not found');
@@ -1055,7 +1055,7 @@ patientsRouter.post('/:id/telegram-link', validateParams(patientParams), async (
 
 patientsRouter.get('/:id/telegram', validateParams(patientParams), async (req, res) => {
   const tenant = req.tenant!;
-  requirePermission(tenant.role, 'patients:read');
+  requirePermission(tenant.permissions, 'patients:read');
   const { id } = res.locals.validatedParams as z.infer<typeof patientParams>;
   const result = await withTenant(tenant.organizationId, async (tx) => {
     if (!await findAccessiblePatient(tx, tenant, id)) throw new ApiError(404, 'NOT_FOUND', 'Patient not found');
@@ -1067,7 +1067,7 @@ patientsRouter.get('/:id/telegram', validateParams(patientParams), async (req, r
 
 patientsRouter.delete('/:id/telegram', validateParams(patientParams), async (req, res) => {
   const tenant = req.tenant!;
-  requirePermission(tenant.role, 'patients:write');
+  requirePermission(tenant.permissions, 'patients:write');
   const { id } = res.locals.validatedParams as z.infer<typeof patientParams>;
   await withTenant(tenant.organizationId, async (tx) => {
     if (!await findAccessiblePatient(tx, tenant, id)) throw new ApiError(404, 'NOT_FOUND', 'Patient not found');

@@ -20,10 +20,10 @@ export async function effectiveSettings(tx: Tx, branchId: string): Promise<Setti
   return rows.find((row) => row.branchId === branchId) ?? rows.find((row) => row.branchId === null) ?? null;
 }
 
-/** Owner who authors what the engine creates (activities and incidents need a user). */
+/** Master who authors what the engine creates (activities and incidents need a user). */
 export async function systemActor(tx: Tx, organizationId: string): Promise<string | null> {
-  const owner = await tx.member.findFirst({ where: { organizationId, role: 'owner' }, orderBy: { createdAt: 'asc' }, select: { userId: true } });
-  return owner?.userId ?? null;
+  const master = await tx.member.findFirst({ where: { organizationId, roleRef: { key: 'master' } }, orderBy: { createdAt: 'asc' }, select: { userId: true } });
+  return master?.userId ?? null;
 }
 
 /** Latest notice for a cycle: an automatic one (notices table) or a manual one staff logged (activity). */

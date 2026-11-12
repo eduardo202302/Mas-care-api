@@ -84,7 +84,7 @@ pipelinesRouter.get('/refill-cycles', async (req, res) => {
  * Guards: a stage that holds cycles cannot be deleted, and each status keeps at least one stage.
  */
 pipelinesRouter.put('/refill-cycles', (req, _res, next) => {
-  if (!puede(req.tenant!.role, 'settings:write')) throw new ApiError(403, 'FORBIDDEN', 'Permission denied');
+  if (!puede(req.tenant!.permissions, 'settings:write')) throw new ApiError(403, 'FORBIDDEN', 'Permission denied');
   next();
 }, validateBody(pipelineUpdate), async (req, res) => {
   const tenant = req.tenant!;

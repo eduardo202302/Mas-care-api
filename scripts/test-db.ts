@@ -78,7 +78,8 @@ const steps: Array<[string, string[]]> = [
   ['npx', ['prisma', 'migrate', 'deploy']],
   ['npm', ['run', 'db:role']],
   ['npm', ['run', 'db:grant']],
-  ['npm', ['run', 'db:seed']],
+  ['npm', ['run', 'db:seed:test']],
+  ['npx', ['tsx', 'scripts/seed-test-roles.ts']],
   ['npm', ['test']],
 ];
 

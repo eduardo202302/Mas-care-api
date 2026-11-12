@@ -316,7 +316,7 @@ reportsExportRouter.get(
   validateQuery(exportQuery),
   async (req, res) => {
     const tenant = req.tenant!;
-    requirePermission(tenant.role);
+    requirePermission(tenant.permissions);
     const parsedParams = exportParams.safeParse(req.params);
     if (!parsedParams.success) throw new ApiError(400, 'VALIDATION_ERROR', 'Unknown report type for export');
     const { type } = parsedParams.data;

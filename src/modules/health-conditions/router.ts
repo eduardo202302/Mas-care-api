@@ -24,7 +24,7 @@ function isUniqueConflict(error: unknown) {
 
 healthConditionsRouter.get('/', validateQuery(conditionListQuery), async (req, res) => {
   const tenant = req.tenant!;
-  requirePermission(tenant.role, 'health-conditions:read');
+  requirePermission(tenant.permissions, 'health-conditions:read');
   const query = res.locals.validatedQuery as z.infer<typeof conditionListQuery>;
   const where: Prisma.HealthConditionWhereInput = {
     ...(query.isActive !== undefined ? { isActive: query.isActive === 'true' } : {}),
@@ -41,7 +41,7 @@ healthConditionsRouter.get('/', validateQuery(conditionListQuery), async (req, r
 healthConditionsRouter.post('/', validateBody(conditionCreate), async (req, res, next) => {
   try {
     const tenant = req.tenant!;
-    requirePermission(tenant.role, 'health-conditions:write');
+    requirePermission(tenant.permissions, 'health-conditions:write');
     const input = req.body as z.infer<typeof conditionCreate>;
     const condition = await withTenant(tenant.organizationId, async (tx) => {
       let created;
@@ -64,7 +64,7 @@ healthConditionsRouter.post('/', validateBody(conditionCreate), async (req, res,
 
 healthConditionsRouter.get('/:id', validateParams(conditionParams), async (req, res) => {
   const tenant = req.tenant!;
-  requirePermission(tenant.role, 'health-conditions:read');
+  requirePermission(tenant.permissions, 'health-conditions:read');
   const { id } = res.locals.validatedParams as z.infer<typeof conditionParams>;
   const condition = await withTenant(tenant.organizationId, (tx) => tx.healthCondition.findUnique({ where: { id } }));
   if (!condition) throw new ApiError(404, 'NOT_FOUND', 'Condición de salud no encontrada.');
@@ -74,7 +74,7 @@ healthConditionsRouter.get('/:id', validateParams(conditionParams), async (req, 
 healthConditionsRouter.patch('/:id', validateParams(conditionParams), validateBody(conditionPatch), async (req, res, next) => {
   try {
     const tenant = req.tenant!;
-    requirePermission(tenant.role, 'health-conditions:write');
+    requirePermission(tenant.permissions, 'health-conditions:write');
     const { id } = res.locals.validatedParams as z.infer<typeof conditionParams>;
     const input = req.body as z.infer<typeof conditionPatch>;
     const condition = await withTenant(tenant.organizationId, async (tx) => {

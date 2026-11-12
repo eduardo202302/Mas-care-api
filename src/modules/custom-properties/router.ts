@@ -59,7 +59,7 @@ customPropertiesRouter.get('/', validateQuery(listQuery), async (req, res) => {
 
 customPropertiesRouter.post('/', validateBody(create), async (req, res) => {
   const tenant = req.tenant!;
-  requireManage(tenant.role);
+  requireManage(tenant.permissions);
   const input = req.body as z.infer<typeof create>;
   try {
     const row = await withTenant(tenant.organizationId, async (tx) => {
@@ -81,7 +81,7 @@ customPropertiesRouter.post('/', validateBody(create), async (req, res) => {
 
 customPropertiesRouter.patch('/:id', validateParams(params), validateBody(patch), async (req, res) => {
   const tenant = req.tenant!;
-  requireManage(tenant.role);
+  requireManage(tenant.permissions);
   const { id } = res.locals.validatedParams as z.infer<typeof params>;
   const input = req.body as z.infer<typeof patch>;
   const row = await withTenant(tenant.organizationId, async (tx) => {
@@ -100,7 +100,7 @@ customPropertiesRouter.patch('/:id', validateParams(params), validateBody(patch)
 for (const [path, archivedAt] of [['archive', () => new Date()], ['restore', () => null]] as const) {
   customPropertiesRouter.post(`/:id/${path}`, validateParams(params), async (req, res) => {
     const tenant = req.tenant!;
-    requireManage(tenant.role);
+    requireManage(tenant.permissions);
     const { id } = res.locals.validatedParams as z.infer<typeof params>;
     const row = await withTenant(tenant.organizationId, async (tx) => {
       if (!await tx.customProperty.findFirst({ where: { id } })) throw new ApiError(404, 'NOT_FOUND', 'Property not found');
@@ -115,7 +115,7 @@ for (const [path, archivedAt] of [['archive', () => new Date()], ['restore', () 
 /** Deleting removes the definition and strips its stored values from every record. */
 customPropertiesRouter.delete('/:id', validateParams(params), async (req, res) => {
   const tenant = req.tenant!;
-  requireManage(tenant.role);
+  requireManage(tenant.permissions);
   const { id } = res.locals.validatedParams as z.infer<typeof params>;
   await withTenant(tenant.organizationId, async (tx) => {
     const current = await tx.customProperty.findFirst({ where: { id } });

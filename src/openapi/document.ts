@@ -37,7 +37,7 @@ import { automationSettingsPatch, automationSettingsQuery, killSwitchInput } fro
 import { deliveryInput, noticeLoggedInput, noticePreviewQuery } from '../schemas/delivery.js';
 import { taskCreate, taskListQuery, taskPatch } from '../schemas/task.js';
 import { templateCreate, templateListQuery, templatePatch } from '../schemas/message-template.js';
-import { labelTemplateCreate, labelTemplateListQuery, labelTemplatePatch, labelTemplatePreviewQuery } from '../schemas/label-template.js';
+import { labelTemplateCreate, labelTemplateListQuery, labelTemplatePatch, labelTemplatePreviewQuery, labelTemplateResolveQuery } from '../schemas/label-template.js';
 import { columnMapping } from '../schemas/import.js';
 import { menuCreate, menuItemSchema, menuListQuery, menuPatch, menuReorder } from '../schemas/menu.js';
 import { roleCreate, roleListQuery, rolePatch, roleSchema } from '../schemas/role.js';
@@ -151,7 +151,7 @@ const UserPatch = registry.register('UserPatch', userPatch);
 const OrganizationUser = registry.register('OrganizationUser', z.object({
   id: z.string(), numericId: z.string(), name: z.string(), username: z.string().nullable().optional(), email: z.string().email(),
   phone: z.string().nullable().optional(),
-  createdAt: z.date(), role: z.string(), roleId: z.string().nullable().optional(), roleName: z.string().nullable().optional(), memberSince: z.date(),
+  createdAt: z.date(), roleId: z.string().nullable().optional(), roleName: z.string().nullable().optional(), memberSince: z.date(),
   branches: z.array(z.object({ id: z.string(), name: z.string() })),
   pin: z.string().nullable().optional(),
   pinUpdatedAt: z.date().nullable().optional(),
@@ -214,6 +214,7 @@ const LabelTemplateCreate = registry.register('LabelTemplateCreate', labelTempla
 const LabelTemplatePatch = registry.register('LabelTemplatePatch', labelTemplatePatch);
 const LabelTemplateListQuery = registry.register('LabelTemplateListQuery', labelTemplateListQuery);
 const LabelTemplatePreviewQuery = registry.register('LabelTemplatePreviewQuery', labelTemplatePreviewQuery);
+const LabelTemplateResolveQuery = registry.register('LabelTemplateResolveQuery', labelTemplateResolveQuery);
 const ColumnMapping = registry.register('ColumnMapping', columnMapping);
 const MenuItem = registry.register('MenuItem', menuItemSchema);
 const MenuCreate = registry.register('MenuCreate', menuCreate);
@@ -810,6 +811,11 @@ registry.registerPath({
   method: 'delete', path: '/api/v1/label-templates/{id}', summary: 'Deactivate a label template', security: [{ cookieAuth: [] }],
   request: { params: z.object({ id: BranchId }) },
   responses: { 204: { description: 'Label template deactivated' }, 403: { description: 'Owner, admin or pharmacist required', content: { 'application/json': { schema: ErrorResponse } } }, 404: { description: 'Label template not found', content: { 'application/json': { schema: ErrorResponse } } } },
+});
+registry.registerPath({
+  method: 'get', path: '/api/v1/label-templates/resolve', summary: 'Resolve label variables for a patient (and optionally one of their treatments)', security: [{ cookieAuth: [] }],
+  request: { query: LabelTemplateResolveQuery },
+  responses: { 200: { description: 'Resolved variable values; unavailable variables are empty strings' }, 404: { description: 'Patient or treatment not found', content: { 'application/json': { schema: ErrorResponse } } } },
 });
 registry.registerPath({
   method: 'get', path: '/api/v1/label-templates/{id}/preview', summary: 'Resolve a label template\'s variables against a real treatment', security: [{ cookieAuth: [] }],

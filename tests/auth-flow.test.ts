@@ -17,7 +17,7 @@ describe.skipIf(process.env.RUN_DB_TESTS !== '1')('real registration and authent
       password,
       organizationName: 'Flow Test Pharmacy',
     }).expect(201);
-    expect(registration.body.role).toBe('owner');
+    expect(registration.body.roleName).toBe('Master');
     expect(registration.body.organization.id).toBeTruthy();
     await agent.get('/api/v1/me').expect(200);
     const setting = await withTenant(registration.body.organization.id as string, (tx) => tx.setting.findFirst({ where: { organizationId: registration.body.organization.id as string, branchId: null } }));

@@ -37,14 +37,14 @@ async function findCycle(tx: Prisma.TransactionClient, tenant: NonNullable<Expre
 
 cyclesRouter.get('/', validateQuery(cycleListQuery), async (req, res) => {
   const tenant = req.tenant!;
-  requirePermission(tenant.role, 'treatments:read');
+  requirePermission(tenant.permissions, 'treatments:read');
   const query = res.locals.validatedQuery as z.infer<typeof cycleListQuery>;
   res.json(await tableData(tenant, query));
 });
 
 cyclesRouter.post('/:id/mark-prepared', validateParams(cycleParams), async (req, res) => {
   const tenant = req.tenant!;
-  requirePermission(tenant.role, 'treatments:write');
+  requirePermission(tenant.permissions, 'treatments:write');
   const { id } = res.locals.validatedParams as z.infer<typeof cycleParams>;
   const result = await withTenant(tenant.organizationId, async (tx) => {
     const cycle = await findCycle(tx, tenant, id);
@@ -75,7 +75,7 @@ cyclesRouter.post('/:id/mark-prepared', validateParams(cycleParams), async (req,
 
 cyclesRouter.post('/:id/mark-not-picked-up', validateParams(cycleParams), async (req, res) => {
   const tenant = req.tenant!;
-  requirePermission(tenant.role, 'treatments:write');
+  requirePermission(tenant.permissions, 'treatments:write');
   const { id } = res.locals.validatedParams as z.infer<typeof cycleParams>;
   const result = await withTenant(tenant.organizationId, async (tx) => {
     const cycle = await findCycle(tx, tenant, id);
@@ -110,7 +110,7 @@ cyclesRouter.post('/:id/mark-not-picked-up', validateParams(cycleParams), async 
  */
 cyclesRouter.post('/:id/close-external', validateParams(cycleParams), validateBody(cycleCloseExternalInput), async (req, res) => {
   const tenant = req.tenant!;
-  requirePermission(tenant.role, 'treatments:write');
+  requirePermission(tenant.permissions, 'treatments:write');
   const { id } = res.locals.validatedParams as z.infer<typeof cycleParams>;
   const input = req.body as z.infer<typeof cycleCloseExternalInput>;
   const result = await withTenant(tenant.organizationId, async (tx) => {
@@ -226,7 +226,7 @@ cyclesRouter.post('/:id/close-external', validateParams(cycleParams), validateBo
 
 cyclesRouter.post('/:id/move', validateParams(cycleParams), validateBody(cycleMoveInput), async (req, res) => {
   const tenant = req.tenant!;
-  requirePermission(tenant.role, 'cycle:move');
+  requirePermission(tenant.permissions, 'cycle:move');
   const { id } = res.locals.validatedParams as z.infer<typeof cycleParams>;
   const input = req.body as z.infer<typeof cycleMoveInput>;
 
@@ -358,7 +358,7 @@ cyclesRouter.post('/:id/move', validateParams(cycleParams), validateBody(cycleMo
 /** Puts the cycle in a stage of its current column (null = the column's first stage). Status and version do not change. */
 cyclesRouter.patch('/:id/stage', validateParams(cycleParams), validateBody(z.object({ stage_id: z.string().min(1).nullable() }).strict()), async (req, res) => {
   const tenant = req.tenant!;
-  requirePermission(tenant.role, 'cycle:move');
+  requirePermission(tenant.permissions, 'cycle:move');
   const { id } = res.locals.validatedParams as z.infer<typeof cycleParams>;
   const { stage_id: stageId } = req.body as { stage_id: string | null };
   await withTenant(tenant.organizationId, async (tx) => {
@@ -378,7 +378,7 @@ cyclesRouter.patch('/:id/stage', validateParams(cycleParams), validateBody(z.obj
 
 cyclesRouter.patch('/:id/expected-on', validateParams(cycleParams), validateBody(cycleExpectedOnInput), async (req, res) => {
   const tenant = req.tenant!;
-  requirePermission(tenant.role, 'cycle:edit-date');
+  requirePermission(tenant.permissions, 'cycle:edit-date');
   const { id } = res.locals.validatedParams as z.infer<typeof cycleParams>;
   const input = req.body as z.infer<typeof cycleExpectedOnInput>;
 
@@ -435,7 +435,7 @@ const OPEN = ['to_notify', 'notified', 'confirmed', 'prepared'] as const;
 /** Active treatments that have no open cycle: the only ones a cycle can be created for. */
 cyclesRouter.get('/eligible-treatments', validateQuery(eligibleTreatmentsQuery), async (req, res) => {
   const tenant = req.tenant!;
-  requirePermission(tenant.role, 'treatments:write');
+  requirePermission(tenant.permissions, 'treatments:write');
   const query = res.locals.validatedQuery as z.infer<typeof eligibleTreatmentsQuery>;
   const data = await withTenant(tenant.organizationId, async (tx) => {
     const rows = await tx.treatment.findMany({
@@ -477,7 +477,7 @@ cyclesRouter.get('/eligible-treatments', validateQuery(eligibleTreatmentsQuery),
  */
 cyclesRouter.post('/', validateBody(cycleCreateInput), async (req, res) => {
   const tenant = req.tenant!;
-  requirePermission(tenant.role, 'treatments:write');
+  requirePermission(tenant.permissions, 'treatments:write');
   const input = req.body as z.infer<typeof cycleCreateInput>;
   const result = await withTenant(tenant.organizationId, async (tx) => {
     const settings = await settingsFor(tx, tenant.organizationId);
@@ -561,7 +561,7 @@ cyclesRouter.post('/', validateBody(cycleCreateInput), async (req, res) => {
 cyclesRouter.post('/batch', validateBody(cycleBatchInput), async (req, res) => {
   const tenant = req.tenant!;
   const input = req.body as z.infer<typeof cycleBatchInput>;
-  requirePermission(tenant.role, input.action === 'change_stage' || input.action === 'archive' ? 'cycle:move' : 'treatments:write');
+  requirePermission(tenant.permissions, input.action === 'change_stage' || input.action === 'archive' ? 'cycle:move' : 'treatments:write');
   const result = await withTenant(tenant.organizationId, async (tx) => {
     const cycles = await tx.refillCycle.findMany({
       where: { AND: [{ id: { in: input.ids } }, await branchScope(tx, tenant)] },

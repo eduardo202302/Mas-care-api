@@ -1,7 +1,6 @@
 import type { Prisma } from '@prisma/client';
-import type { Role } from '../domain/roles.js';
 
-export type PatientTenant = { organizationId: string; userId: string; role: Role };
+export type PatientTenant = { organizationId: string; userId: string; allBranches: boolean };
 
 /** Central branch-aware scope used by every patient and nested-resource route. */
 export async function patientWhere(
@@ -9,7 +8,7 @@ export async function patientWhere(
   tenant: PatientTenant,
   filter: Prisma.PatientWhereInput = {},
 ): Promise<Prisma.PatientWhereInput> {
-  if (tenant.role === 'owner' || tenant.role === 'admin') {
+  if (tenant.allBranches) {
     return { AND: [filter], organizationId: tenant.organizationId };
   }
   const memberships = await tx.branchMember.findMany({
@@ -40,7 +39,7 @@ export async function canAccessBranch(
 ): Promise<boolean> {
   const branch = await tx.branch.findFirst({ where: { id: branchId, archivedAt: null }, select: { id: true } });
   if (!branch) return false;
-  if (tenant.role === 'owner' || tenant.role === 'admin') return true;
+  if (tenant.allBranches) return true;
   const membership = await tx.branchMember.findFirst({ where: { branchId, userId: tenant.userId }, select: { branchId: true } });
   return Boolean(membership);
 }

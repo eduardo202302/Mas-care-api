@@ -69,7 +69,7 @@ type FailedNotice = { id: string; patientId: string; cycleId: string; sentAt: Da
 
 noResponseRouter.get('/', validateQuery(reportBaseQuery), async (req, res) => {
   const tenant = req.tenant!;
-  requirePermission(tenant.role);
+  requirePermission(tenant.permissions);
   const query = res.locals.validatedQuery as z.infer<typeof reportBaseQuery>;
   const requestedBranchIds = parseBranchIds(query.branch_id);
 

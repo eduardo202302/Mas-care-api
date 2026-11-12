@@ -1,13 +1,12 @@
 import type { Prisma } from '@prisma/client';
-import type { Role } from '../domain/roles.js';
 
-export type TenantScope = { organizationId: string; userId: string; role: Role };
+export type TenantScope = { organizationId: string; userId: string; allBranches: boolean };
 
 export async function accessibleBranchIds(
   tx: Prisma.TransactionClient,
   tenant: TenantScope,
 ): Promise<string[] | null> {
-  if (tenant.role === 'owner' || tenant.role === 'admin') return null;
+  if (tenant.allBranches) return null;
   const memberships = await tx.branchMember.findMany({
     where: { organizationId: tenant.organizationId, userId: tenant.userId },
     select: { branchId: true },

@@ -105,7 +105,7 @@ function activityData(incident: { id: string; patientId: string | null; treatmen
 
 incidentsRouter.get('/', validateQuery(incidentListQuery), async (req, res) => {
   const tenant = req.tenant!;
-  requirePermission(tenant.role, 'treatments:read');
+  requirePermission(tenant.permissions, 'treatments:read');
   const query = res.locals.validatedQuery as z.infer<typeof incidentListQuery>;
   const result = await withTenant(tenant.organizationId, async (tx) => {
     const ids = await accessibleBranchIds(tx, tenant);
@@ -135,7 +135,7 @@ incidentsRouter.get('/', validateQuery(incidentListQuery), async (req, res) => {
 
 incidentsRouter.get('/:id', validateParams(incidentParams), async (req, res) => {
   const tenant = req.tenant!;
-  requirePermission(tenant.role, 'treatments:read');
+  requirePermission(tenant.permissions, 'treatments:read');
   const { id } = res.locals.validatedParams as z.infer<typeof incidentParams>;
   const incident = await withTenant(tenant.organizationId, (tx) => findIncident(tx, tenant, id));
   if (!incident) throw new ApiError(404, 'NOT_FOUND', 'Incident not found');
@@ -144,7 +144,7 @@ incidentsRouter.get('/:id', validateParams(incidentParams), async (req, res) => 
 
 incidentsRouter.post('/', validateBody(incidentCreate), async (req, res) => {
   const tenant = req.tenant!;
-  requirePermission(tenant.role, 'incident:create');
+  requirePermission(tenant.permissions, 'incident:create');
   const input = req.body as z.infer<typeof incidentCreate>;
   const result = await withTenant(tenant.organizationId, async (tx) => {
     await assertRefs(tx, tenant, input);
@@ -180,7 +180,7 @@ incidentsRouter.post('/', validateBody(incidentCreate), async (req, res) => {
 
 incidentsRouter.patch('/:id', validateParams(incidentParams), validateBody(incidentPatch), async (req, res) => {
   const tenant = req.tenant!;
-  requirePermission(tenant.role, 'incident:move');
+  requirePermission(tenant.permissions, 'incident:move');
   const { id } = res.locals.validatedParams as z.infer<typeof incidentParams>;
   const input = req.body as z.infer<typeof incidentPatch>;
   const result = await withTenant(tenant.organizationId, async (tx) => {
@@ -215,7 +215,7 @@ incidentsRouter.patch('/:id', validateParams(incidentParams), validateBody(incid
 
 incidentsRouter.post('/:id/move', validateParams(incidentParams), validateBody(incidentMoveInput), async (req, res) => {
   const tenant = req.tenant!;
-  requirePermission(tenant.role, 'incident:move');
+  requirePermission(tenant.permissions, 'incident:move');
   const { id } = res.locals.validatedParams as z.infer<typeof incidentParams>;
   const input = req.body as z.infer<typeof incidentMoveInput>;
   const result = await withTenant(tenant.organizationId, async (tx) => {
@@ -259,7 +259,7 @@ incidentsRouter.post('/:id/move', validateParams(incidentParams), validateBody(i
 
 incidentsRouter.post('/:id/resolve', validateParams(incidentParams), validateBody(incidentResolveInput), async (req, res) => {
   const tenant = req.tenant!;
-  requirePermission(tenant.role, 'incident:resolve');
+  requirePermission(tenant.permissions, 'incident:resolve');
   const { id } = res.locals.validatedParams as z.infer<typeof incidentParams>;
   const { resolution } = req.body as z.infer<typeof incidentResolveInput>;
   const result = await withTenant(tenant.organizationId, async (tx) => {

@@ -33,7 +33,7 @@ async function findDoctorOrThrow(tx: Prisma.TransactionClient, id: string) {
 
 doctorsRouter.get('/', validateQuery(doctorListQuery), async (req, res) => {
   const tenant = req.tenant!;
-  requirePermission(tenant.role, 'doctors:read');
+  requirePermission(tenant.permissions, 'doctors:read');
   const query = res.locals.validatedQuery as z.infer<typeof doctorListQuery>;
   const where: Prisma.DoctorWhereInput = {
     ...(query.isActive !== undefined ? { isActive: query.isActive === 'true' } : {}),
@@ -59,7 +59,7 @@ doctorsRouter.get('/', validateQuery(doctorListQuery), async (req, res) => {
 doctorsRouter.post('/', validateBody(doctorCreate), async (req, res, next) => {
   try {
     const tenant = req.tenant!;
-    requirePermission(tenant.role, 'doctors:write');
+    requirePermission(tenant.permissions, 'doctors:write');
     const input = req.body as z.infer<typeof doctorCreate>;
     const doctor = await withTenant(tenant.organizationId, async (tx) => {
       let created;
@@ -82,7 +82,7 @@ doctorsRouter.post('/', validateBody(doctorCreate), async (req, res, next) => {
 
 doctorsRouter.get('/:id', validateParams(doctorParams), async (req, res) => {
   const tenant = req.tenant!;
-  requirePermission(tenant.role, 'doctors:read');
+  requirePermission(tenant.permissions, 'doctors:read');
   const { id } = res.locals.validatedParams as z.infer<typeof doctorParams>;
   const doctor = await withTenant(tenant.organizationId, (tx) => tx.doctor.findUnique({
     where: { id },
@@ -95,7 +95,7 @@ doctorsRouter.get('/:id', validateParams(doctorParams), async (req, res) => {
 doctorsRouter.patch('/:id', validateParams(doctorParams), validateBody(doctorPatch), async (req, res, next) => {
   try {
     const tenant = req.tenant!;
-    requirePermission(tenant.role, 'doctors:write');
+    requirePermission(tenant.permissions, 'doctors:write');
     const { id } = res.locals.validatedParams as z.infer<typeof doctorParams>;
     const input = req.body as z.infer<typeof doctorPatch>;
     const doctor = await withTenant(tenant.organizationId, async (tx) => {
@@ -120,7 +120,7 @@ doctorsRouter.patch('/:id', validateParams(doctorParams), validateBody(doctorPat
 
 doctorsRouter.get('/:id/patients', validateParams(doctorParams), async (req, res) => {
   const tenant = req.tenant!;
-  requirePermission(tenant.role, 'doctors:read');
+  requirePermission(tenant.permissions, 'doctors:read');
   const { id } = res.locals.validatedParams as z.infer<typeof doctorParams>;
   const links = await withTenant(tenant.organizationId, async (tx) => {
     await findDoctorOrThrow(tx, id);
@@ -136,7 +136,7 @@ doctorsRouter.get('/:id/patients', validateParams(doctorParams), async (req, res
 doctorsRouter.post('/:id/specialties', validateParams(doctorParams), validateBody(doctorSpecialtyInput), async (req, res, next) => {
   try {
     const tenant = req.tenant!;
-    requirePermission(tenant.role, 'doctors:write');
+    requirePermission(tenant.permissions, 'doctors:write');
     const { id } = res.locals.validatedParams as z.infer<typeof doctorParams>;
     const input = req.body as z.infer<typeof doctorSpecialtyInput>;
     const link = await withTenant(tenant.organizationId, async (tx) => {
@@ -163,7 +163,7 @@ doctorsRouter.post('/:id/specialties', validateParams(doctorParams), validateBod
 
 doctorsRouter.delete('/:id/specialties/:specialtyId', validateParams(doctorSpecialtyParams), async (req, res) => {
   const tenant = req.tenant!;
-  requirePermission(tenant.role, 'doctors:write');
+  requirePermission(tenant.permissions, 'doctors:write');
   const { id, specialtyId } = res.locals.validatedParams as z.infer<typeof doctorSpecialtyParams>;
   await withTenant(tenant.organizationId, async (tx) => {
     await findDoctorOrThrow(tx, id);
@@ -177,7 +177,7 @@ doctorsRouter.delete('/:id/specialties/:specialtyId', validateParams(doctorSpeci
 doctorsRouter.post('/:id/medical-centers', validateParams(doctorParams), validateBody(doctorMedicalCenterInput), async (req, res, next) => {
   try {
     const tenant = req.tenant!;
-    requirePermission(tenant.role, 'doctors:write');
+    requirePermission(tenant.permissions, 'doctors:write');
     const { id } = res.locals.validatedParams as z.infer<typeof doctorParams>;
     const input = req.body as z.infer<typeof doctorMedicalCenterInput>;
     const link = await withTenant(tenant.organizationId, async (tx) => {
@@ -207,7 +207,7 @@ doctorsRouter.post('/:id/medical-centers', validateParams(doctorParams), validat
 doctorsRouter.patch('/:id/medical-centers/:medicalCenterId', validateParams(doctorMedicalCenterParams), validateBody(doctorMedicalCenterPatch), async (req, res, next) => {
   try {
     const tenant = req.tenant!;
-    requirePermission(tenant.role, 'doctors:write');
+    requirePermission(tenant.permissions, 'doctors:write');
     const { id, medicalCenterId } = res.locals.validatedParams as z.infer<typeof doctorMedicalCenterParams>;
     const input = req.body as z.infer<typeof doctorMedicalCenterPatch>;
     const link = await withTenant(tenant.organizationId, async (tx) => {

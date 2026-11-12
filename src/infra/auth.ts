@@ -3,7 +3,6 @@ import { prismaAdapter } from 'better-auth/adapters/prisma';
 import { organization } from 'better-auth/plugins';
 import { allowedOrigins, env } from '../config/env.js';
 import { prisma, withTenant } from './prisma.js';
-import { accessControl, organizationRoles } from '../domain/auth-roles.js';
 import { record } from '../modules/audit/record.js';
 import { initializeOrganization } from '../modules/organizations/initialize.js';
 import { sendMail } from './mailer.js';
@@ -45,8 +44,6 @@ Si no creaste la cuenta, ignora este mensaje.`);
   plugins: [organization({
     allowUserToCreateOrganization: true,
     organizationLimit: 1,
-    ac: accessControl,
-    roles: organizationRoles,
     organizationHooks: {
       afterCreateOrganization: async ({ organization: created, user }) =>
         initializeOrganization(created.id, {

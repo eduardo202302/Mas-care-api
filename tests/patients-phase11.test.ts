@@ -26,7 +26,7 @@ describe.skipIf(!enabled)('phase 1.1 patient and medication APIs', () => {
     const { agent: readOnly } = await login('read_only');
     const list = await ownerA.get('/api/v1/users?q=operator').expect(200);
     const operator = list.body.data.find((user: { email: string }) => user.email === 'operator.a@maxcare.test');
-    expect(operator).toMatchObject({ role: 'operator', id: expect.any(String), branches: expect.any(Array) });
+    expect(operator).toMatchObject({ roleName: 'Prueba Operador', id: expect.any(String), branches: expect.any(Array) });
     expect(list.body.data.every((user: { email: string }) => !user.email.endsWith('.b@maxcare.test'))).toBe(true);
     await ownerA.get(`/api/v1/users/${operator.id}`).expect(200);
     await ownerA.get(`/api/v1/users/${contextB.user.id}`).expect(404);

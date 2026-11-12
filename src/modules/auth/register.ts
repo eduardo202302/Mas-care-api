@@ -9,6 +9,7 @@ import { createPin } from '../../infra/pin-crypto.js';
 import { allowedOrigins } from '../../config/env.js';
 import { logger } from '../../infra/logger.js';
 import { companyIdFromLinkToken } from '../../infra/company-link.js';
+import { ensureOrganizationMaster } from '../roles/system-roles.js';
 
 export const registerRouter = Router();
 
@@ -125,18 +126,16 @@ registerRouter.post('/', validateBody(registration), async (req, res, next) => {
       .toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 48) || 'organization';
 
     // Registering through a company link joins that company's organization: the
-    // first user becomes its owner, later ones start with read-only access.
+    // first user becomes its Master, later ones have no role until an administrator assigns one.
     // Without a link the user gets a new organization of their own.
     let organization: { id: string; name: string };
-    let role: string;
     if (companyOrganizationId) {
       const target = await prisma.organization.findUniqueOrThrow({
         where: { id: companyOrganizationId },
-        select: { id: true, name: true, _count: { select: { members: true } } },
+        select: { id: true, name: true },
       });
-      role = target._count.members === 0 ? 'owner' : 'read_only';
       await prisma.member.create({
-        data: { id: crypto.randomUUID(), organizationId: target.id, userId: signup.user.id, role, createdAt: new Date() },
+        data: { id: crypto.randomUUID(), organizationId: target.id, userId: signup.user.id, createdAt: new Date() },
       });
       organization = { id: target.id, name: target.name };
     } else {
@@ -144,8 +143,14 @@ registerRouter.post('/', validateBody(registration), async (req, res, next) => {
         body: { name: input.organizationName, slug: `${slugBase}-${crypto.randomUUID().slice(0, 8)}`, userId: signup.user.id },
         headers: new Headers({ cookie: cookieHeader.split(';')[0]! }),
       });
-      role = 'owner';
     }
+    // Gives the organization its Master role; it goes to the first member while nobody holds it.
+    await ensureOrganizationMaster(organization.id);
+    // roles has row-level security, so the role name must be read inside the tenant context.
+    const membership = await withTenant(organization.id, (tx) => tx.member.findFirst({
+      where: { organizationId: organization.id, userId: signup.user.id },
+      select: { roleRef: { select: { name: true } } },
+    }));
 
     await withTenant(organization.id, (tx) =>
       record(tx, { organizationId: organization.id, actorId: signup.user.id, action: 'auth.register' }),
@@ -159,7 +164,7 @@ registerRouter.post('/', validateBody(registration), async (req, res, next) => {
     res.status(201).json({
       user: { ...signup.user, username: input.username.toLowerCase(), phone: input.phone ?? null },
       organization: { id: organization.id, name: organization.name },
-      role,
+      roleName: membership?.roleRef?.name ?? null,
     });
   } catch (error) { next(error); }
 });

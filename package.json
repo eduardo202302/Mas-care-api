@@ -22,7 +22,8 @@
     "db:deploy": "prisma migrate deploy",
     "db:role": "tsx scripts/bootstrap-runtime-role.ts",
     "db:grant": "tsx scripts/grant-runtime-role.ts",
-    "db:seed": "tsx prisma/seed.ts"
+    "db:seed": "tsx prisma/seed.ts",
+    "db:seed:test": "tsx prisma/seed-test.ts"
   },
   "dependencies": {
     "@asteasolutions/zod-to-openapi": "7.3.4",

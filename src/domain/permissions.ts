@@ -1,5 +1,3 @@
-import type { Role } from './roles.js';
-
 export const actions = [
   'branches:read', 'branches:write', 'patients:read', 'patients:write', 'patients:archive',
   'medications:read', 'medications:write', 'treatments:read', 'treatments:write', 'treatments:manage',
@@ -13,33 +11,13 @@ export const actions = [
   'dose:log', 'dose:correct', 'inventory:purchase', 'inventory:adjust', 'inventory:settings:write',
 ] as const;
 export type Action = (typeof actions)[number];
-const grants: Record<Role, readonly Action[]> = {
-  owner: actions,
-  admin: actions,
-  pharmacist: [
-    'branches:read', 'patients:read', 'patients:write', 'patients:archive',
-    'medications:read', 'medications:write', 'treatments:read', 'treatments:write', 'treatments:manage',
-    'dashboard:read', 'tasks:read', 'tasks:write', 'templates:read', 'templates:write',
-    'audit:read', 'cycle:move', 'cycle:edit-date', 'stock:mark',
-    'incident:create', 'incident:move', 'incident:resolve',
-    'outbox:view', 'outbox:retry', 'inbound:assign', 'patient:transfer',
-    'doctors:read', 'doctors:write', 'specialties:read', 'specialties:write',
-    'medical-centers:read', 'medical-centers:write', 'health-conditions:read', 'health-conditions:write',
-    'dose:log', 'dose:correct', 'inventory:purchase', 'inventory:adjust',
-  ],
-  operator: [
-    'branches:read', 'patients:read', 'patients:write', 'medications:read',
-    'treatments:read', 'treatments:write', 'dashboard:read', 'tasks:read', 'tasks:write', 'templates:read',
-    'cycle:move', 'stock:mark', 'incident:create', 'incident:move',
-    'inbound:assign',
-    'doctors:read', 'specialties:read', 'medical-centers:read', 'health-conditions:read',
-    'dose:log', 'inventory:purchase',
-  ],
-  read_only: [
-    'branches:read', 'patients:read', 'medications:read', 'treatments:read',
-    'dashboard:read', 'tasks:read', 'templates:read',
-    'doctors:read', 'specialties:read', 'medical-centers:read', 'health-conditions:read',
-  ],
-};
-export const puede = (role: Role, action: Action): boolean => grants[role].includes(action);
-export const permissionsFor = (role: Role): readonly Action[] => grants[role];
+
+/** What the signed-in member's role allows. Loaded from the database, never from code. */
+export type PermissionSet = ReadonlySet<Action>;
+
+export const isAction = (value: string): value is Action => (actions as readonly string[]).includes(value);
+
+/** Keeps only known actions, so a stale permission stored on a role can never grant anything. */
+export const toPermissionSet = (values: readonly string[]): PermissionSet => new Set(values.filter(isAction));
+
+export const puede = (permissions: PermissionSet, action: Action): boolean => permissions.has(action);

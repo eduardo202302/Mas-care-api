@@ -3,6 +3,7 @@ import { Prisma } from '@prisma/client';
 import { env } from '../../config/env.js';
 import { prisma, withTenant } from '../../infra/prisma.js';
 import { findOrCreateSetting } from '../../infra/settings.js';
+import { ensureOrganizationMaster } from '../roles/system-roles.js';
 
 type OrganizationDetails = {
   name?: string;
@@ -57,7 +58,9 @@ export async function initializeOrganization(
     });
   }
 
-  return withTenant(organizationId, async (tx) => {
+  await withTenant(organizationId, async (tx) => {
     await findOrCreateSetting(tx, organizationId);
   });
+  // Every organization has a Master role, held by its owner.
+  await ensureOrganizationMaster(organizationId);
 }

@@ -15,7 +15,9 @@ import {
   labelTemplateParams,
   labelTemplatePatch,
   labelTemplatePreviewQuery,
+  labelTemplateResolveQuery,
 } from '../../schemas/label-template.js';
+import { resolveLabelValues } from './variables.js';
 
 export const labelTemplatesRouter = Router();
 labelTemplatesRouter.use(resolveTenant);
@@ -32,7 +34,7 @@ async function findLabelTemplate(tx: Prisma.TransactionClient, tenant: NonNullab
 
 labelTemplatesRouter.get('/', validateQuery(labelTemplateListQuery), async (req, res) => {
   const tenant = req.tenant!;
-  requirePermission(tenant.role, 'templates:read');
+  requirePermission(tenant.permissions, 'templates:read');
   const query = res.locals.validatedQuery as z.infer<typeof labelTemplateListQuery>;
   const data = await withTenant(tenant.organizationId, async (tx) => {
     const scope = await optionalBranchScope(tx, tenant);
@@ -52,7 +54,7 @@ labelTemplatesRouter.get('/', validateQuery(labelTemplateListQuery), async (req,
 
 labelTemplatesRouter.post('/', validateBody(labelTemplateCreate), async (req, res) => {
   const tenant = req.tenant!;
-  requirePermission(tenant.role, 'templates:write');
+  requirePermission(tenant.permissions, 'templates:write');
   const input = req.body as z.infer<typeof labelTemplateCreate>;
   const template = await withTenant(tenant.organizationId, async (tx) => {
     if (input.branch_id && !await canAccessBranch(tx, tenant, input.branch_id)) {
@@ -70,8 +72,8 @@ labelTemplatesRouter.post('/', validateBody(labelTemplateCreate), async (req, re
         branchId: input.branch_id ?? null,
         name: input.name,
         description: input.description ?? null,
-        widthMm: input.width_mm,
-        heightMm: input.height_mm,
+        widthIn: input.width_in,
+        heightIn: input.height_in,
         orientation: input.orientation,
         elements: input.elements as Prisma.InputJsonArray,
         isDefault: input.is_default ?? false,
@@ -84,9 +86,19 @@ labelTemplatesRouter.post('/', validateBody(labelTemplateCreate), async (req, re
   res.status(201).json(template);
 });
 
+/** Variable values for a patient (and optionally one of their treatments); backs the editor's live preview. */
+labelTemplatesRouter.get('/resolve', validateQuery(labelTemplateResolveQuery), async (req, res) => {
+  const tenant = req.tenant!;
+  requirePermission(tenant.permissions, 'templates:read');
+  const query = res.locals.validatedQuery as z.infer<typeof labelTemplateResolveQuery>;
+  const values = await withTenant(tenant.organizationId, (tx) =>
+    resolveLabelValues(tx, tenant, { patientId: query.patient_id, treatmentId: query.treatment_id }));
+  res.json({ patient_id: query.patient_id, treatment_id: query.treatment_id ?? null, values });
+});
+
 labelTemplatesRouter.get('/:id', validateParams(labelTemplateParams), async (req, res) => {
   const tenant = req.tenant!;
-  requirePermission(tenant.role, 'templates:read');
+  requirePermission(tenant.permissions, 'templates:read');
   const { id } = res.locals.validatedParams as z.infer<typeof labelTemplateParams>;
   const template = await withTenant(tenant.organizationId, async (tx) => {
     const found = await findLabelTemplate(tx, tenant, id);
@@ -98,7 +110,7 @@ labelTemplatesRouter.get('/:id', validateParams(labelTemplateParams), async (req
 
 labelTemplatesRouter.patch('/:id', validateParams(labelTemplateParams), validateBody(labelTemplatePatch), async (req, res) => {
   const tenant = req.tenant!;
-  requirePermission(tenant.role, 'templates:write');
+  requirePermission(tenant.permissions, 'templates:write');
   const { id } = res.locals.validatedParams as z.infer<typeof labelTemplateParams>;
   const input = req.body as z.infer<typeof labelTemplatePatch>;
   const template = await withTenant(tenant.organizationId, async (tx) => {
@@ -120,8 +132,8 @@ labelTemplatesRouter.patch('/:id', validateParams(labelTemplateParams), validate
         branchId: input.branch_id,
         name: input.name,
         description: input.description,
-        widthMm: input.width_mm,
-        heightMm: input.height_mm,
+        widthIn: input.width_in,
+        heightIn: input.height_in,
         orientation: input.orientation,
         elements: input.elements as Prisma.InputJsonArray | undefined,
         isDefault: input.is_default,
@@ -136,7 +148,7 @@ labelTemplatesRouter.patch('/:id', validateParams(labelTemplateParams), validate
 
 labelTemplatesRouter.delete('/:id', validateParams(labelTemplateParams), async (req, res) => {
   const tenant = req.tenant!;
-  requirePermission(tenant.role, 'templates:write');
+  requirePermission(tenant.permissions, 'templates:write');
   const { id } = res.locals.validatedParams as z.infer<typeof labelTemplateParams>;
   await withTenant(tenant.organizationId, async (tx) => {
     const current = await findLabelTemplate(tx, tenant, id);
@@ -157,7 +169,7 @@ labelTemplatesRouter.delete('/:id', validateParams(labelTemplateParams), async (
  */
 labelTemplatesRouter.get('/:id/preview', validateParams(labelTemplateParams), validateQuery(labelTemplatePreviewQuery), async (req, res) => {
   const tenant = req.tenant!;
-  requirePermission(tenant.role, 'templates:read');
+  requirePermission(tenant.permissions, 'templates:read');
   const { id } = res.locals.validatedParams as z.infer<typeof labelTemplateParams>;
   const { treatment_id } = res.locals.validatedQuery as z.infer<typeof labelTemplatePreviewQuery>;
   const result = await withTenant(tenant.organizationId, async (tx) => {
@@ -165,48 +177,7 @@ labelTemplatesRouter.get('/:id/preview', validateParams(labelTemplateParams), va
     if (!template) throw new ApiError(404, 'NOT_FOUND', 'Label template not found');
     const treatment = await tx.treatment.findFirst({ where: { id: treatment_id, organizationId: tenant.organizationId } });
     if (!treatment) throw new ApiError(404, 'NOT_FOUND', 'Treatment not found');
-    const [patient, medication, branch, organization, prescriberDoctor] = await Promise.all([
-      tx.patient.findFirst({ where: { id: treatment.patientId } }),
-      tx.medication.findFirst({ where: { id: treatment.medicationId } }),
-      tx.branch.findFirst({ where: { id: treatment.branchId } }),
-      tx.organization.findUnique({ where: { id: tenant.organizationId } }),
-      treatment.prescriberDoctorId ? tx.doctor.findFirst({ where: { id: treatment.prescriberDoctorId } }) : null,
-    ]);
-    if (!patient || !medication) throw new ApiError(404, 'NOT_FOUND', 'Patient or medication not found');
-
-    const ageLabel = (() => {
-      if (!patient.birthDate) return '';
-      const years = Math.floor((Date.now() - patient.birthDate.getTime()) / 31557600000);
-      return `${years} ${years === 1 ? 'año' : 'años'}`;
-    })();
-    const doseUnit = medication.doseUnit || 'unidad';
-    const intakesPerDay = Number(treatment.intakesPerDay);
-    const frequencyLabel = intakesPerDay === 1 ? 'Una vez al día' : `${intakesPerDay} veces al día`;
-    const durationLabel = treatment.endDate
-      ? `${Math.max(1, Math.round((treatment.endDate.getTime() - treatment.startDate.getTime()) / 86400000))} días`
-      : 'Indefinido';
-
-    const values: Record<string, string> = {
-      farmacia_nombre: branch?.name ?? organization?.name ?? '',
-      farmacia_telefono: branch?.phone ?? '',
-      farmacia_direccion: branch?.description ?? '',
-      paciente_nombre: patient.fullName,
-      paciente_documento: patient.documentId ?? '',
-      paciente_edad: ageLabel,
-      medicamento_nombre: medication.brandName ?? medication.genericName ?? medication.activeIngredient ?? medication.presentation,
-      medicamento_presentacion: medication.presentation,
-      dosis: `${treatment.dosePerIntake} ${doseUnit}`,
-      via_administracion: 'Vía oral',
-      frecuencia: frequencyLabel,
-      duracion: durationLabel,
-      cantidad: `${treatment.quantityPerCycle}`,
-      instrucciones: treatment.notes ?? '',
-      fecha_inicio: treatment.startDate.toISOString().slice(0, 10),
-      fecha_fin: treatment.endDate ? treatment.endDate.toISOString().slice(0, 10) : '',
-      prescriptor: treatment.prescriberName
-        ?? (prescriberDoctor ? `${prescriberDoctor.firstName} ${prescriberDoctor.lastName}`.trim() : ''),
-      codigo_tratamiento: treatment.id,
-    };
+    const values = await resolveLabelValues(tx, tenant, { patientId: treatment.patientId, treatmentId: treatment.id });
     return { template_id: id, treatment_id, values };
   });
   res.json(result);

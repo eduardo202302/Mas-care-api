@@ -1,4 +1,3 @@
-import type { Role as BaseRole } from './roles.js';
 
 export type MenuSeed = {
   key: string;
@@ -43,20 +42,3 @@ export const menuSeeds: readonly MenuSeed[] = [
 export const menuItemId = (key: string) => `menu_${key}`;
 
 export type PermissionFlags = { canView: boolean; canCreate: boolean; canEdit: boolean; canDelete: boolean };
-export type SystemRoleSeed = {
-  key: BaseRole;
-  name: string;
-  description: string;
-  menuKeys: readonly string[] | 'all';
-  flags: PermissionFlags;
-};
-
-const common = ['inicio', 'tablero', 'incidencias', 'avisos', 'tareas', 'pacientes', 'tratamientos', 'medicamentos', 'ajustes', 'sucursales', 'usuarios', 'plantillas', 'umbrales', 'existencias', 'medicos', 'especialidades', 'centros_medicos', 'condiciones_salud'] as const;
-
-export const systemRoleSeeds: readonly SystemRoleSeed[] = [
-  { key: 'owner', name: 'Propietario', description: 'Acceso total a la organización.', menuKeys: 'all', flags: { canView: true, canCreate: true, canEdit: true, canDelete: true } },
-  { key: 'admin', name: 'Administrador de farmacia', description: 'Gestiona la farmacia, usuarios y roles.', menuKeys: 'all', flags: { canView: true, canCreate: true, canEdit: true, canDelete: true } },
-  { key: 'pharmacist', name: 'Farmacéutico', description: 'Gestiona pacientes, tratamientos y entregas.', menuKeys: common, flags: { canView: true, canCreate: true, canEdit: true, canDelete: true } },
-  { key: 'operator', name: 'Operador/Auxiliar', description: 'Registra pacientes y tratamientos.', menuKeys: common, flags: { canView: true, canCreate: true, canEdit: true, canDelete: false } },
-  { key: 'read_only', name: 'Solo lectura', description: 'Consulta sin modificar datos.', menuKeys: common, flags: { canView: true, canCreate: false, canEdit: false, canDelete: false } },
-];

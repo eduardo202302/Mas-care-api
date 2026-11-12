@@ -17,13 +17,13 @@ const compact = (value: object) => Object.fromEntries(Object.entries(value).filt
 export const branchesRouter = Router();
 branchesRouter.use(resolveTenant);
 branchesRouter.get('/', validateQuery(branchListQuery), async (req, res, next) => {
-  try { const t = req.tenant!; if (!puede(t.role, 'branches:read')) throw new ApiError(403, 'FORBIDDEN', 'Permission denied');
+  try { const t = req.tenant!; if (!puede(t.permissions, 'branches:read')) throw new ApiError(403, 'FORBIDDEN', 'Permission denied');
     const query = res.locals.validatedQuery as z.infer<typeof branchListQuery>;
     const branches = await withTenant(t.organizationId, (tx) => tx.branch.findMany({ where: { organizationId: t.organizationId, archivedAt: query.archived ? { not: null } : null }, orderBy: { name: 'asc' } })); res.json(sliceIfPaged(branches, query));
   } catch (e) { next(e); }
 });
 branchesRouter.post('/', validateBody(branchInput), async (req, res, next) => {
-  try { const t = req.tenant!; if (!puede(t.role, 'branches:write')) throw new ApiError(403, 'FORBIDDEN', 'Permission denied');
+  try { const t = req.tenant!; if (!puede(t.permissions, 'branches:write')) throw new ApiError(403, 'FORBIDDEN', 'Permission denied');
     const input = req.body as z.infer<typeof branchInput>;
     const branch = await withTenant(t.organizationId, async (tx) => {
       const created = await tx.branch.create({ data: { ...compact(input), organizationId: t.organizationId } as Prisma.BranchUncheckedCreateInput });
@@ -33,17 +33,17 @@ branchesRouter.post('/', validateBody(branchInput), async (req, res, next) => {
   } catch (e) { next(e); }
 });
 branchesRouter.get('/:id', validateParams(z.object({ id: z.string().min(1) })), async (req, res, next) => {
-  try { const tenant = req.tenant!; if (!puede(tenant.role, 'branches:read')) throw new ApiError(403, 'FORBIDDEN', 'Permission denied'); const params = res.locals.validatedParams as { id: string }; const branch = await withTenant(tenant.organizationId, (tx) => tx.branch.findFirst({ where: { organizationId: tenant.organizationId, id: params.id, archivedAt: null } })); if (!branch) throw new ApiError(404, 'NOT_FOUND', 'Branch not found'); res.json(branch); }
+  try { const tenant = req.tenant!; if (!puede(tenant.permissions, 'branches:read')) throw new ApiError(403, 'FORBIDDEN', 'Permission denied'); const params = res.locals.validatedParams as { id: string }; const branch = await withTenant(tenant.organizationId, (tx) => tx.branch.findFirst({ where: { organizationId: tenant.organizationId, id: params.id, archivedAt: null } })); if (!branch) throw new ApiError(404, 'NOT_FOUND', 'Branch not found'); res.json(branch); }
   catch (e) { next(e); }
 });
 const branchUpdate = branchInput.partial().strict();
 branchesRouter.patch('/:id', validateParams(z.object({ id: z.string().min(1) })), validateBody(branchUpdate), async (req, res, next) => {
-  try { const t = req.tenant!; if (!puede(t.role, 'branches:write')) throw new ApiError(403, 'FORBIDDEN', 'Permission denied'); const input = compact(req.body as z.infer<typeof branchUpdate>); const params = res.locals.validatedParams as { id: string };
+  try { const t = req.tenant!; if (!puede(t.permissions, 'branches:write')) throw new ApiError(403, 'FORBIDDEN', 'Permission denied'); const input = compact(req.body as z.infer<typeof branchUpdate>); const params = res.locals.validatedParams as { id: string };
     const branch = await withTenant(t.organizationId, async (tx) => { const exists = await tx.branch.findFirst({ where: { organizationId: t.organizationId, id: params.id, archivedAt: null } }); if (!exists) throw new ApiError(404, 'NOT_FOUND', 'Branch not found'); const updated = await tx.branch.update({ where: { organizationId_id: { organizationId: t.organizationId, id: exists.id } }, data: input as Prisma.BranchUpdateInput }); await record(tx, { organizationId: t.organizationId, actorId: t.userId, action: 'branch.update', subjectId: exists.id }); return updated; }); res.json(branch);
   } catch (e) { next(e); }
 });
 branchesRouter.delete('/:id', validateParams(z.object({ id: z.string().min(1) })), async (req, res, next) => {
-  try { const t = req.tenant!; if (!puede(t.role, 'branches:write')) throw new ApiError(403, 'FORBIDDEN', 'Permission denied');
+  try { const t = req.tenant!; if (!puede(t.permissions, 'branches:write')) throw new ApiError(403, 'FORBIDDEN', 'Permission denied');
     const params = res.locals.validatedParams as { id: string };
     await withTenant(t.organizationId, async (tx) => {
       const exists = await tx.branch.findFirst({ where: { organizationId: t.organizationId, id: params.id, archivedAt: null } });
@@ -61,7 +61,7 @@ branchesRouter.delete('/:id', validateParams(z.object({ id: z.string().min(1) })
   } catch (e) { next(e); }
 });
 branchesRouter.post('/:id/restore', validateParams(z.object({ id: z.string().min(1) })), async (req, res, next) => {
-  try { const t = req.tenant!; if (!puede(t.role, 'branches:write')) throw new ApiError(403, 'FORBIDDEN', 'Permission denied');
+  try { const t = req.tenant!; if (!puede(t.permissions, 'branches:write')) throw new ApiError(403, 'FORBIDDEN', 'Permission denied');
     const params = res.locals.validatedParams as { id: string };
     const branch = await withTenant(t.organizationId, async (tx) => {
       const exists = await tx.branch.findFirst({ where: { organizationId: t.organizationId, id: params.id, archivedAt: { not: null } } });
@@ -75,7 +75,7 @@ branchesRouter.post('/:id/restore', validateParams(z.object({ id: z.string().min
 branchesRouter.put('/:branchId/stock-marks/:medicationId', validateParams(stockMarkParams), validateBody(stockMarkInput), async (req, res, next) => {
   try {
     const tenant = req.tenant!;
-    if (!puede(tenant.role, 'stock:mark')) throw new ApiError(403, 'FORBIDDEN', 'Permission denied');
+    if (!puede(tenant.permissions, 'stock:mark')) throw new ApiError(403, 'FORBIDDEN', 'Permission denied');
     const { branchId, medicationId } = res.locals.validatedParams as z.infer<typeof stockMarkParams>;
     const { level } = req.body as z.infer<typeof stockMarkInput>;
     const mark = await withTenant(tenant.organizationId, async (tx) => {

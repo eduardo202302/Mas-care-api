@@ -421,8 +421,8 @@ async function evaluateTreatments(tx: Tx, tenant: NonNullable<Request['tenant']>
 }
 
 const guard = (tenant: NonNullable<Request['tenant']>, entity?: Entity) => {
-  requirePermission(tenant.role, 'imports:write');
-  if (entity === 'treatments') requirePermission(tenant.role, 'treatments:write');
+  requirePermission(tenant.permissions, 'imports:write');
+  if (entity === 'treatments') requirePermission(tenant.permissions, 'treatments:write');
   if (!env.IMPORTS_ENABLED) throw new ApiError(404, 'IMPORTS_DISABLED', 'La importación CSV está deshabilitada');
 };
 

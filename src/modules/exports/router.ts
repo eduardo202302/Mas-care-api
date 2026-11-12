@@ -139,7 +139,7 @@ async function catalogFor(entity: ExportEntity, tx: Prisma.TransactionClient): P
 /** Column keys the UI can offer; also what `columns` is validated against. */
 exportsRouter.get('/:entity/columns', validateParams(exportParams), async (req, res) => {
   const tenant = req.tenant!;
-  if (!puede(tenant.role, 'export:csv')) throw new ApiError(403, 'FORBIDDEN', 'export:csv permission required');
+  if (!puede(tenant.permissions, 'export:csv')) throw new ApiError(403, 'FORBIDDEN', 'export:csv permission required');
   const { entity } = res.locals.validatedParams as z.infer<typeof exportParams>;
   const catalog = await withTenant(tenant.organizationId, (tx) => catalogFor(entity, tx));
   res.json({ columns: Object.entries(catalog).map(([key, { header }]) => ({ key, header })) });
@@ -237,7 +237,7 @@ async function loadRows(entity: ExportEntity, tenant: NonNullable<Express.Reques
 
 exportsRouter.post('/:entity', exportRateLimit, validateParams(exportParams), validateBody(exportInput), async (req, res) => {
   const tenant = req.tenant!;
-  if (!puede(tenant.role, 'export:csv')) throw new ApiError(403, 'FORBIDDEN', 'export:csv permission required');
+  if (!puede(tenant.permissions, 'export:csv')) throw new ApiError(403, 'FORBIDDEN', 'export:csv permission required');
   const { entity } = res.locals.validatedParams as z.infer<typeof exportParams>;
   const input = req.body as z.infer<typeof exportInput>;
   const { rows, columns, company, branchLabel } = await withTenant(tenant.organizationId, async (tx) => {

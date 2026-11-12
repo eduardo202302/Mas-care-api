@@ -20,7 +20,7 @@ const nonEmpty = <T extends object>(value: T) => Object.fromEntries(Object.entri
 
 medicalCentersRouter.get('/', validateQuery(medicalCenterListQuery), async (req, res) => {
   const tenant = req.tenant!;
-  requirePermission(tenant.role, 'medical-centers:read');
+  requirePermission(tenant.permissions, 'medical-centers:read');
   const query = res.locals.validatedQuery as z.infer<typeof medicalCenterListQuery>;
   const where: Prisma.MedicalCenterWhereInput = {
     ...(query.isActive !== undefined ? { isActive: query.isActive === 'true' } : {}),
@@ -40,7 +40,7 @@ medicalCentersRouter.get('/', validateQuery(medicalCenterListQuery), async (req,
 
 medicalCentersRouter.post('/', validateBody(medicalCenterCreate), async (req, res) => {
   const tenant = req.tenant!;
-  requirePermission(tenant.role, 'medical-centers:write');
+  requirePermission(tenant.permissions, 'medical-centers:write');
   const input = req.body as z.infer<typeof medicalCenterCreate>;
   const center = await withTenant(tenant.organizationId, async (tx) => {
     const created = await tx.medicalCenter.create({ data: { ...nonEmpty(input), organizationId: tenant.organizationId } as Prisma.MedicalCenterUncheckedCreateInput });
@@ -52,7 +52,7 @@ medicalCentersRouter.post('/', validateBody(medicalCenterCreate), async (req, re
 
 medicalCentersRouter.get('/:id', validateParams(medicalCenterParams), async (req, res) => {
   const tenant = req.tenant!;
-  requirePermission(tenant.role, 'medical-centers:read');
+  requirePermission(tenant.permissions, 'medical-centers:read');
   const { id } = res.locals.validatedParams as z.infer<typeof medicalCenterParams>;
   const center = await withTenant(tenant.organizationId, (tx) => tx.medicalCenter.findUnique({ where: { id } }));
   if (!center) throw new ApiError(404, 'NOT_FOUND', 'Centro médico no encontrado.');
@@ -61,7 +61,7 @@ medicalCentersRouter.get('/:id', validateParams(medicalCenterParams), async (req
 
 medicalCentersRouter.patch('/:id', validateParams(medicalCenterParams), validateBody(medicalCenterPatch), async (req, res) => {
   const tenant = req.tenant!;
-  requirePermission(tenant.role, 'medical-centers:write');
+  requirePermission(tenant.permissions, 'medical-centers:write');
   const { id } = res.locals.validatedParams as z.infer<typeof medicalCenterParams>;
   const input = req.body as z.infer<typeof medicalCenterPatch>;
   const center = await withTenant(tenant.organizationId, async (tx) => {
@@ -76,7 +76,7 @@ medicalCentersRouter.patch('/:id', validateParams(medicalCenterParams), validate
 
 medicalCentersRouter.get('/:id/doctors', validateParams(medicalCenterParams), async (req, res) => {
   const tenant = req.tenant!;
-  requirePermission(tenant.role, 'medical-centers:read');
+  requirePermission(tenant.permissions, 'medical-centers:read');
   const { id } = res.locals.validatedParams as z.infer<typeof medicalCenterParams>;
   const links = await withTenant(tenant.organizationId, async (tx) => {
     const center = await tx.medicalCenter.findUnique({ where: { id } });

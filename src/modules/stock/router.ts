@@ -17,7 +17,7 @@ const requirePermission = (role: Parameters<typeof puede>[0], action: Parameters
 
 stockMarksRouter.get('/', validateQuery(stockMarkQuery), async (req, res) => {
   const tenant = req.tenant!;
-  requirePermission(tenant.role, 'treatments:read');
+  requirePermission(tenant.permissions, 'treatments:read');
   const query = res.locals.validatedQuery as z.infer<typeof stockMarkQuery>;
   const data = await withTenant(tenant.organizationId, async (tx) => {
     const ids = await accessibleBranchIds(tx, tenant);

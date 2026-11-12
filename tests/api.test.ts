@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import request from 'supertest';
 import { app } from '../src/app.js';
-import { puede, permissionsFor } from '../src/domain/permissions.js';
+import { actions, puede, toPermissionSet } from '../src/domain/permissions.js';
+import { fixtureRoles } from './helpers/role-fixtures.js';
 
 describe('phase 0 API contract', () => {
   it('serves health and the generated OpenAPI document', async () => {
@@ -71,24 +72,24 @@ describe('phase 0 API contract', () => {
     expect(document.paths['/api/v1/patients/{id}/incidents'].get).toBeDefined();
     expect(document.components.securitySchemes.cookieAuth).toMatchObject({ type: 'apiKey', in: 'cookie' });
   });
-  it('enforces the role matrix for branch management', () => {
-    expect(puede('read_only', 'patients:write')).toBe(false);
-    expect(puede('operator', 'branches:write')).toBe(false);
-    expect(puede('owner', 'branches:write')).toBe(true);
-    expect(puede('admin', 'branches:write')).toBe(true);
-    expect(permissionsFor('read_only')).toContain('patients:read');
-    expect(puede('operator', 'patients:archive')).toBe(false);
-    expect(puede('operator', 'medications:write')).toBe(false);
-    expect(puede('pharmacist', 'medications:write')).toBe(true);
-    expect(puede('read_only', 'medications:read')).toBe(true);
-    expect(puede('read_only', 'medications:write')).toBe(false);
-    expect(puede('operator', 'tasks:write')).toBe(true);
-    expect(puede('read_only', 'tasks:write')).toBe(false);
-    expect(puede('pharmacist', 'templates:write')).toBe(true);
-    expect(puede('operator', 'templates:write')).toBe(false);
-    expect(puede('admin', 'imports:write')).toBe(true);
-    expect(puede('pharmacist', 'imports:write')).toBe(false);
-    expect(puede('read_only', 'dashboard:read')).toBe(true);
+  it('decides permissions from the permission set of a role, not from a role name', () => {
+    const readOnly = toPermissionSet(fixtureRoles.find((role) => role.key === 'read_only')!.permissions);
+    const operator = toPermissionSet(fixtureRoles.find((role) => role.key === 'operator')!.permissions);
+    const pharmacist = toPermissionSet(fixtureRoles.find((role) => role.key === 'pharmacist')!.permissions);
+    const master = toPermissionSet(actions);
+    expect(puede(readOnly, 'patients:read')).toBe(true);
+    expect(puede(readOnly, 'patients:write')).toBe(false);
+    expect(puede(operator, 'branches:write')).toBe(false);
+    expect(puede(operator, 'tasks:write')).toBe(true);
+    expect(puede(pharmacist, 'medications:write')).toBe(true);
+    expect(puede(pharmacist, 'imports:write')).toBe(false);
+    expect(puede(master, 'branches:write')).toBe(true);
+    expect(puede(master, 'imports:write')).toBe(true);
+  });
+  it('ignores unknown permissions stored on a role', () => {
+    const set = toPermissionSet(['patients:read', 'made-up:action']);
+    expect([...set]).toEqual(['patients:read']);
+    expect(puede(new Set(), 'patients:read')).toBe(false);
   });
   it('protects the branch list and does not trust a client tenant id', async () => {
     await request(app).get('/api/v1/branches?organization_id=another-tenant').expect(401);

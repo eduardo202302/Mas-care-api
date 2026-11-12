@@ -13,7 +13,7 @@ import { record } from '../audit/record.js';
 
 type Tenant = NonNullable<Express.Request['tenant']>;
 const requirePermission = (tenant: Tenant, action: Parameters<typeof puede>[1]) => {
-  if (!puede(tenant.role, action)) throw new ApiError(403, 'FORBIDDEN', 'Permission denied');
+  if (!puede(tenant.permissions, action)) throw new ApiError(403, 'FORBIDDEN', 'Permission denied');
 };
 const idParams = z.object({ id: z.string().min(1) });
 

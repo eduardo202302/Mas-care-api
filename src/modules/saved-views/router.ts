@@ -30,7 +30,7 @@ const handleUniqueName = (error: unknown): never => {
 savedViewsRouter.get('/', validateQuery(savedViewQuery), async (req, res) => {
   const tenant = req.tenant!;
   const { entity } = res.locals.validatedQuery as z.infer<typeof savedViewQuery>;
-  requireRead(tenant.role, entity);
+  requireRead(tenant.permissions, entity);
   const data = await withTenant(tenant.organizationId, (tx) => tx.savedView.findMany({
     where: { userId: tenant.userId, entity },
     orderBy: [{ isDefault: 'desc' }, { name: 'asc' }],
@@ -41,7 +41,7 @@ savedViewsRouter.get('/', validateQuery(savedViewQuery), async (req, res) => {
 savedViewsRouter.post('/', validateBody(savedViewCreate), async (req, res) => {
   const tenant = req.tenant!;
   const input = req.body as z.infer<typeof savedViewCreate>;
-  requireWrite(tenant.role, input.entity);
+  requireWrite(tenant.permissions, input.entity);
   try {
     const view = await withTenant(tenant.organizationId, async (tx) => {
       if (input.isDefault) {
@@ -70,7 +70,7 @@ savedViewsRouter.patch('/:id', validateParams(savedViewParams), validateBody(sav
     const view = await withTenant(tenant.organizationId, async (tx) => {
       const current = await tx.savedView.findFirst({ where: { id, userId: tenant.userId } });
       if (!current) throw new ApiError(404, 'NOT_FOUND', 'Saved view not found');
-      requireWrite(tenant.role, current.entity);
+      requireWrite(tenant.permissions, current.entity);
       if (input.isDefault) {
         await tx.savedView.updateMany({ where: { userId: tenant.userId, entity: current.entity, isDefault: true, NOT: { id } }, data: { isDefault: false } });
       }
@@ -94,7 +94,7 @@ savedViewsRouter.delete('/:id', validateParams(savedViewParams), async (req, res
   await withTenant(tenant.organizationId, async (tx) => {
     const current = await tx.savedView.findFirst({ where: { id, userId: tenant.userId } });
     if (!current) throw new ApiError(404, 'NOT_FOUND', 'Saved view not found');
-    requireWrite(tenant.role, current.entity);
+    requireWrite(tenant.permissions, current.entity);
     await tx.savedView.delete({ where: { id } });
   }, tenant.userId);
   res.status(204).end();

@@ -2,8 +2,8 @@ import { readdirSync, readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import request from 'supertest';
 import { app } from '../src/app.js';
-import { menuItemId, menuSeeds, systemRoleSeeds } from '../src/domain/menu-defaults.js';
-import { allGrants, builtInGrants, normalizeGrants, resolveVisibleMenu, withPlatformOwnerGrants, type MenuRow } from '../src/domain/menu-tree.js';
+import { menuItemId, menuSeeds } from '../src/domain/menu-defaults.js';
+import { allGrants, normalizeGrants, resolveVisibleMenu, withPlatformOwnerGrants, type MenuRow } from '../src/domain/menu-tree.js';
 import { menuCreate, menuPatch } from '../src/schemas/menu.js';
 import { roleCreate, rolePatch } from '../src/schemas/role.js';
 
@@ -35,13 +35,6 @@ describe('menu catalog defaults', () => {
     for (const seed of menuSeeds) {
       const parent = menuSeeds.find((item) => item.key === seed.parentKey);
       if (seed.parentKey) expect(parent?.parentKey).toBeNull();
-    }
-  });
-
-  it('references only catalog keys from the system roles', () => {
-    for (const role of systemRoleSeeds) {
-      if (role.menuKeys === 'all') continue;
-      for (const key of role.menuKeys) expect(menuSeeds.some((seed) => seed.key === key)).toBe(true);
     }
   });
 });
@@ -131,29 +124,6 @@ describe('withPlatformOwnerGrants', () => {
   });
 });
 
-describe('builtInGrants', () => {
-  it('gives the owner and admin the whole catalog', () => {
-    expect(builtInGrants('owner', catalog)).toHaveLength(catalog.length);
-    expect(builtInGrants('admin', catalog)).toHaveLength(catalog.length);
-  });
-
-  it('limits the other built-in roles to the common screens', () => {
-    const keys = builtInGrants('operator', catalog).map((grant) => grant.menuItemId);
-    expect(keys).toContain(menuItemId('pacientes'));
-    expect(keys).not.toContain(menuItemId('roles'));
-    expect(keys).not.toContain(menuItemId('menu'));
-  });
-
-  it('applies the action flags of the role', () => {
-    const [grant] = builtInGrants('read_only', catalog);
-    expect(grant).toMatchObject({ canView: true, canCreate: false, canEdit: false, canDelete: false });
-  });
-
-  it('returns nothing for an unknown role', () => {
-    expect(builtInGrants('member', catalog)).toEqual([]);
-  });
-});
-
 describe('menu and role schemas', () => {
   it('validates menu items', () => {
     expect(menuCreate.safeParse({ key: 'x_y', label: 'X', path: '/x' }).success).toBe(true);
@@ -163,11 +133,14 @@ describe('menu and role schemas', () => {
     expect(menuPatch.safeParse({ isActive: false }).success).toBe(true);
   });
 
-  it('validates roles and refuses to create owners', () => {
-    expect(roleCreate.safeParse({ name: 'Caja', baseRole: 'operator' }).success).toBe(true);
-    expect(roleCreate.safeParse({ name: 'Caja', baseRole: 'owner' }).success).toBe(false);
-    expect(roleCreate.safeParse({ name: 'C', baseRole: 'operator' }).success).toBe(false);
+  it('validates roles with their own permissions and branch access', () => {
+    expect(roleCreate.safeParse({ name: 'Caja', permissions: ['patients:read', 'tasks:write'], allBranches: false }).success).toBe(true);
+    expect(roleCreate.safeParse({ name: 'Caja' }).success).toBe(true);
+    expect(roleCreate.safeParse({ name: 'Caja', permissions: ['not:a-permission'] }).success).toBe(false);
+    expect(roleCreate.safeParse({ name: 'Caja', baseRole: 'operator' }).success).toBe(false);
+    expect(roleCreate.safeParse({ name: 'C' }).success).toBe(false);
     expect(rolePatch.safeParse({}).success).toBe(false);
+    expect(rolePatch.safeParse({ permissions: ['patients:read'] }).success).toBe(true);
   });
 });
 

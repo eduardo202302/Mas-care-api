@@ -21,9 +21,9 @@ transfersRouter.use(resolveTenant);
 // an explicit role check for the global-list-only restriction.
 transfersRouter.get('/', validateQuery(transferListQuery), async (req, res) => {
   const tenant = req.tenant!;
-  if (!puede(tenant.role, 'patient:transfer')) throw new ApiError(403, 'FORBIDDEN', 'Permission denied');
-  if (tenant.role !== 'owner' && tenant.role !== 'admin') {
-    throw new ApiError(403, 'FORBIDDEN', 'Only owner or admin can view the global transfer list');
+  if (!puede(tenant.permissions, 'patient:transfer')) throw new ApiError(403, 'FORBIDDEN', 'Permission denied');
+  if (!tenant.allBranches) {
+    throw new ApiError(403, 'FORBIDDEN', 'Only roles with access to all branches can view the global transfer list');
   }
   const query = res.locals.validatedQuery as z.infer<typeof transferListQuery>;
   const result = await withTenant(tenant.organizationId, async (tx) => {

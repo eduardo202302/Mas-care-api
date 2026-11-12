@@ -84,7 +84,7 @@ function settingFor(tx: Tx, organizationId: string) {
 }
 
 async function branchScope(tx: Tx, tenant: NonNullable<Express.Request['tenant']>): Promise<Prisma.TreatmentWhereInput> {
-  if (tenant.role === 'owner' || tenant.role === 'admin') return {};
+  if (tenant.allBranches) return {};
   const memberships = await tx.branchMember.findMany({
     where: { organizationId: tenant.organizationId, userId: tenant.userId },
     select: { branchId: true },
@@ -364,7 +364,7 @@ function assertDateRange(startDate: Date, endDate: Date | null) {
 
 treatmentsRouter.get('/', validateQuery(treatmentListQuery), async (req, res) => {
   const tenant = req.tenant!;
-  requirePermission(tenant.role, 'treatments:read');
+  requirePermission(tenant.permissions, 'treatments:read');
   const query = res.locals.validatedQuery as z.infer<typeof treatmentListQuery>;
   const result = await withTenant(tenant.organizationId, async (tx) => {
     // Con `page`/`rows` la lista es una tabla paginada (sucursal primero); sin ellos
@@ -653,7 +653,7 @@ export async function createTreatment(tx: Tx, tenant: NonNullable<Express.Reques
 
 treatmentsRouter.post('/', validateBody(treatmentCreate), async (req, res) => {
   const tenant = req.tenant!;
-  requirePermission(tenant.role, 'treatments:write');
+  requirePermission(tenant.permissions, 'treatments:write');
   const input = req.body as z.infer<typeof treatmentCreate>;
   const result = await withTenant(tenant.organizationId, async (tx) => {
     const { treatment, cycle, settings } = await createTreatment(tx, tenant, input);
@@ -664,7 +664,7 @@ treatmentsRouter.post('/', validateBody(treatmentCreate), async (req, res) => {
 
 treatmentsRouter.get('/:id', validateParams(treatmentParams), async (req, res) => {
   const tenant = req.tenant!;
-  requirePermission(tenant.role, 'treatments:read');
+  requirePermission(tenant.permissions, 'treatments:read');
   const { id } = res.locals.validatedParams as z.infer<typeof treatmentParams>;
   const result = await withTenant(tenant.organizationId, async (tx) => {
     const treatment = await findTreatment(tx, tenant, id);
@@ -678,7 +678,7 @@ treatmentsRouter.get('/:id', validateParams(treatmentParams), async (req, res) =
 
 treatmentsRouter.patch('/:id', validateParams(treatmentParams), validateBody(treatmentPatch), async (req, res) => {
   const tenant = req.tenant!;
-  requirePermission(tenant.role, 'treatments:write');
+  requirePermission(tenant.permissions, 'treatments:write');
   const { id } = res.locals.validatedParams as z.infer<typeof treatmentParams>;
   const input = req.body as z.infer<typeof treatmentPatch>;
   const result = await withTenant(tenant.organizationId, async (tx) => {
@@ -781,7 +781,7 @@ treatmentsRouter.patch('/:id', validateParams(treatmentParams), validateBody(tre
 
 treatmentsRouter.post('/:id/pause', validateParams(treatmentParams), validateBody(statusReasonInput), async (req, res) => {
   const tenant = req.tenant!;
-  requirePermission(tenant.role, 'treatments:manage');
+  requirePermission(tenant.permissions, 'treatments:manage');
   const { id } = res.locals.validatedParams as z.infer<typeof treatmentParams>;
   const { reason } = req.body as z.infer<typeof statusReasonInput>;
   const result = await withTenant(tenant.organizationId, async (tx) => {
@@ -811,7 +811,7 @@ treatmentsRouter.post('/:id/pause', validateParams(treatmentParams), validateBod
 
 treatmentsRouter.post('/:id/finish', validateParams(treatmentParams), validateBody(statusReasonInput), async (req, res) => {
   const tenant = req.tenant!;
-  requirePermission(tenant.role, 'treatments:manage');
+  requirePermission(tenant.permissions, 'treatments:manage');
   const { id } = res.locals.validatedParams as z.infer<typeof treatmentParams>;
   const { reason } = req.body as z.infer<typeof statusReasonInput>;
   const result = await withTenant(tenant.organizationId, async (tx) => {
@@ -841,7 +841,7 @@ treatmentsRouter.post('/:id/finish', validateParams(treatmentParams), validateBo
 
 treatmentsRouter.post('/:id/resume', validateParams(treatmentParams), async (req, res) => {
   const tenant = req.tenant!;
-  requirePermission(tenant.role, 'treatments:manage');
+  requirePermission(tenant.permissions, 'treatments:manage');
   const { id } = res.locals.validatedParams as z.infer<typeof treatmentParams>;
   const result = await withTenant(tenant.organizationId, async (tx) => {
     const existing = await findTreatment(tx, tenant, id);
@@ -870,7 +870,7 @@ treatmentsRouter.post('/:id/resume', validateParams(treatmentParams), async (req
 
 treatmentsRouter.post('/:id/adjust-coverage', validateParams(treatmentParams), validateBody(coverageAdjustInput), async (req, res) => {
   const tenant = req.tenant!;
-  requirePermission(tenant.role, 'treatments:manage');
+  requirePermission(tenant.permissions, 'treatments:manage');
   const { id } = res.locals.validatedParams as z.infer<typeof treatmentParams>;
   const { new_end_on, reason } = req.body as z.infer<typeof coverageAdjustInput>;
   const result = await withTenant(tenant.organizationId, async (tx) => {
@@ -905,7 +905,7 @@ treatmentsRouter.post('/:id/adjust-coverage', validateParams(treatmentParams), v
 
 treatmentsRouter.post('/:id/renew-prescription', validateParams(treatmentParams), validateBody(prescriptionRenewInput), async (req, res) => {
   const tenant = req.tenant!;
-  requirePermission(tenant.role, 'treatments:manage');
+  requirePermission(tenant.permissions, 'treatments:manage');
   const { id } = res.locals.validatedParams as z.infer<typeof treatmentParams>;
   const { new_expiry } = req.body as z.infer<typeof prescriptionRenewInput>;
   const result = await withTenant(tenant.organizationId, async (tx) => {
@@ -963,7 +963,7 @@ async function replayDelivery(
 
 treatmentsRouter.post('/:id/deliver', validateParams(treatmentParams), validateBody(deliveryInput), async (req, res) => {
   const tenant = req.tenant!;
-  requirePermission(tenant.role, 'treatments:write');
+  requirePermission(tenant.permissions, 'treatments:write');
   const { id } = res.locals.validatedParams as z.infer<typeof treatmentParams>;
   const input = req.body as z.infer<typeof deliveryInput>;
   const key = deliveryIdempotencyKey(req);
@@ -1084,7 +1084,7 @@ treatmentsRouter.post('/:id/deliver', validateParams(treatmentParams), validateB
 
 treatmentsRouter.get('/:id/notice-preview', validateParams(treatmentParams), validateQuery(noticePreviewQuery), async (req, res) => {
   const tenant = req.tenant!;
-  requirePermission(tenant.role, 'treatments:read');
+  requirePermission(tenant.permissions, 'treatments:read');
   const { id } = res.locals.validatedParams as z.infer<typeof treatmentParams>;
   const query = res.locals.validatedQuery as z.infer<typeof noticePreviewQuery>;
   const result = await withTenant(tenant.organizationId, async (tx) => {
@@ -1138,7 +1138,7 @@ treatmentsRouter.get('/:id/notice-preview', validateParams(treatmentParams), val
 
 treatmentsRouter.post('/:id/notice-logged', validateParams(treatmentParams), validateBody(noticeLoggedInput), async (req, res) => {
   const tenant = req.tenant!;
-  requirePermission(tenant.role, 'treatments:write');
+  requirePermission(tenant.permissions, 'treatments:write');
   const { id } = res.locals.validatedParams as z.infer<typeof treatmentParams>;
   const { channel } = req.body as z.infer<typeof noticeLoggedInput>;
   const activity = await withTenant(tenant.organizationId, async (tx) => {
@@ -1182,7 +1182,7 @@ const pauseInput = z.object({ paused: z.boolean(), reason: z.string().trim().max
 /** Pauses or resumes automatic notices for one treatment. Pausing also cancels what was already waiting to go out. */
 treatmentsRouter.patch('/:id/automation', validateParams(treatmentParams), validateBody(pauseInput), async (req, res) => {
   const tenant = req.tenant!;
-  requirePermission(tenant.role, 'treatments:write');
+  requirePermission(tenant.permissions, 'treatments:write');
   const { id } = res.locals.validatedParams as z.infer<typeof treatmentParams>;
   const input = req.body as z.infer<typeof pauseInput>;
   const result = await withTenant(tenant.organizationId, async (tx) => {
@@ -1270,7 +1270,7 @@ async function assertPrescriptionValid(tx: Tx, organizationId: string, treatment
 
 treatmentsRouter.get('/:id/dose-schedules', validateParams(treatmentParams), async (req, res) => {
   const tenant = req.tenant!;
-  requirePermission(tenant.role, 'treatments:read');
+  requirePermission(tenant.permissions, 'treatments:read');
   const { id } = res.locals.validatedParams as z.infer<typeof treatmentParams>;
   const result = await withTenant(tenant.organizationId, async (tx) => {
     const treatment = await findTreatment(tx, tenant, id);
@@ -1290,7 +1290,7 @@ treatmentsRouter.get('/:id/dose-schedules', validateParams(treatmentParams), asy
  */
 treatmentsRouter.post('/:id/dose-schedules', validateParams(treatmentParams), authorizationDocumentUpload, async (req, res) => {
   const tenant = req.tenant!;
-  requirePermission(tenant.role, 'treatments:write');
+  requirePermission(tenant.permissions, 'treatments:write');
   const { id } = res.locals.validatedParams as z.infer<typeof treatmentParams>;
   const input = doseScheduleCreateInput.parse(req.body);
   const file = req.file;
@@ -1419,7 +1419,7 @@ treatmentsRouter.post('/:id/dose-schedules', validateParams(treatmentParams), au
 
 treatmentsRouter.get('/:id/dose-schedules/:doseScheduleId/authorization-document', validateParams(doseScheduleParams), async (req, res) => {
   const tenant = req.tenant!;
-  requirePermission(tenant.role, 'treatments:read');
+  requirePermission(tenant.permissions, 'treatments:read');
   const { id, doseScheduleId } = res.locals.validatedParams as z.infer<typeof doseScheduleParams>;
   const schedule = await withTenant(tenant.organizationId, async (tx) => {
     const treatment = await findTreatment(tx, tenant, id);
@@ -1433,7 +1433,7 @@ treatmentsRouter.get('/:id/dose-schedules/:doseScheduleId/authorization-document
 
 treatmentsRouter.post('/:id/prescription-document', validateParams(treatmentParams), prescriptionDocumentUpload, async (req, res) => {
   const tenant = req.tenant!;
-  requirePermission(tenant.role, 'treatments:write');
+  requirePermission(tenant.permissions, 'treatments:write');
   const { id } = res.locals.validatedParams as z.infer<typeof treatmentParams>;
   const file = req.file;
   if (!file) throw new ApiError(400, 'VALIDATION_ERROR', 'prescription_document es requerido');
@@ -1452,7 +1452,7 @@ treatmentsRouter.post('/:id/prescription-document', validateParams(treatmentPara
 
 treatmentsRouter.get('/:id/prescription-document', validateParams(treatmentParams), async (req, res) => {
   const tenant = req.tenant!;
-  requirePermission(tenant.role, 'treatments:read');
+  requirePermission(tenant.permissions, 'treatments:read');
   const { id } = res.locals.validatedParams as z.infer<typeof treatmentParams>;
   const treatment = await withTenant(tenant.organizationId, async (tx) => {
     const row = await findTreatment(tx, tenant, id);
@@ -1465,7 +1465,7 @@ treatmentsRouter.get('/:id/prescription-document', validateParams(treatmentParam
 
 treatmentsRouter.get('/:id/doses', validateParams(treatmentParams), async (req, res) => {
   const tenant = req.tenant!;
-  requirePermission(tenant.role, 'treatments:read');
+  requirePermission(tenant.permissions, 'treatments:read');
   const { id } = res.locals.validatedParams as z.infer<typeof treatmentParams>;
   const result = await withTenant(tenant.organizationId, async (tx) => {
     const treatment = await findTreatment(tx, tenant, id);
@@ -1477,7 +1477,7 @@ treatmentsRouter.get('/:id/doses', validateParams(treatmentParams), async (req, 
 
 treatmentsRouter.post('/:id/doses/:doseLogId/take', validateParams(doseLogParams), validateBody(doseTakeInput), async (req, res) => {
   const tenant = req.tenant!;
-  requirePermission(tenant.role, 'dose:log');
+  requirePermission(tenant.permissions, 'dose:log');
   const { id, doseLogId } = res.locals.validatedParams as z.infer<typeof doseLogParams>;
   const input = req.body as z.infer<typeof doseTakeInput>;
   const result = await withTenant(tenant.organizationId, async (tx) => {
@@ -1509,7 +1509,7 @@ treatmentsRouter.post('/:id/doses/:doseLogId/take', validateParams(doseLogParams
 
 treatmentsRouter.post('/:id/doses/:doseLogId/skip', validateParams(doseLogParams), validateBody(doseSkipInput), async (req, res) => {
   const tenant = req.tenant!;
-  requirePermission(tenant.role, 'dose:log');
+  requirePermission(tenant.permissions, 'dose:log');
   const { id, doseLogId } = res.locals.validatedParams as z.infer<typeof doseLogParams>;
   const input = req.body as z.infer<typeof doseSkipInput>;
   const result = await withTenant(tenant.organizationId, async (tx) => {
@@ -1536,7 +1536,7 @@ treatmentsRouter.post('/:id/doses/:doseLogId/skip', validateParams(doseLogParams
 /** Closes the original occurrence and opens a new one at the new time - the original is never silently moved. */
 treatmentsRouter.post('/:id/doses/:doseLogId/reschedule', validateParams(doseLogParams), validateBody(doseRescheduleInput), async (req, res) => {
   const tenant = req.tenant!;
-  requirePermission(tenant.role, 'dose:log');
+  requirePermission(tenant.permissions, 'dose:log');
   const { id, doseLogId } = res.locals.validatedParams as z.infer<typeof doseLogParams>;
   const input = req.body as z.infer<typeof doseRescheduleInput>;
   const rescheduledFor = new Date(input.rescheduled_for);
@@ -1577,7 +1577,7 @@ treatmentsRouter.post('/:id/doses/:doseLogId/reschedule', validateParams(doseLog
 /** Reverts a taken/skipped/rescheduled dose back to `scheduled`. Never edits the InventoryEntry in place - a reversal entry is created, the original stays untouched. */
 treatmentsRouter.post('/:id/doses/:doseLogId/correct', validateParams(doseLogParams), validateBody(doseCorrectInput), async (req, res) => {
   const tenant = req.tenant!;
-  requirePermission(tenant.role, 'dose:correct');
+  requirePermission(tenant.permissions, 'dose:correct');
   const { id, doseLogId } = res.locals.validatedParams as z.infer<typeof doseLogParams>;
   const input = req.body as z.infer<typeof doseCorrectInput>;
   const result = await withTenant(tenant.organizationId, async (tx) => {
@@ -1619,7 +1619,7 @@ treatmentsRouter.post('/:id/doses/:doseLogId/correct', validateParams(doseLogPar
 
 treatmentsRouter.get('/:id/inventory', validateParams(treatmentParams), async (req, res) => {
   const tenant = req.tenant!;
-  requirePermission(tenant.role, 'treatments:read');
+  requirePermission(tenant.permissions, 'treatments:read');
   const { id } = res.locals.validatedParams as z.infer<typeof treatmentParams>;
   const result = await withTenant(tenant.organizationId, async (tx) => {
     const treatment = await findTreatment(tx, tenant, id);
@@ -1733,7 +1733,7 @@ treatmentsRouter.get('/:id/inventory', validateParams(treatmentParams), async (r
 
 treatmentsRouter.get('/:id/inventory/entries', validateParams(treatmentParams), validateQuery(inventoryEntriesQuery), async (req, res) => {
   const tenant = req.tenant!;
-  requirePermission(tenant.role, 'treatments:read');
+  requirePermission(tenant.permissions, 'treatments:read');
   const { id } = res.locals.validatedParams as z.infer<typeof treatmentParams>;
   const query = res.locals.validatedQuery as z.infer<typeof inventoryEntriesQuery>;
   const result = await withTenant(tenant.organizationId, async (tx) => {
@@ -1754,7 +1754,7 @@ treatmentsRouter.get('/:id/inventory/entries', validateParams(treatmentParams), 
 
 treatmentsRouter.post('/:id/external-purchases', validateParams(treatmentParams), validateBody(externalPurchaseInput), async (req, res) => {
   const tenant = req.tenant!;
-  requirePermission(tenant.role, 'inventory:purchase');
+  requirePermission(tenant.permissions, 'inventory:purchase');
   const { id } = res.locals.validatedParams as z.infer<typeof treatmentParams>;
   const input = req.body as z.infer<typeof externalPurchaseInput>;
   const result = await withTenant(tenant.organizationId, async (tx) => {
@@ -1784,7 +1784,7 @@ treatmentsRouter.post('/:id/external-purchases', validateParams(treatmentParams)
 
 treatmentsRouter.post('/:id/inventory/adjust', validateParams(treatmentParams), validateBody(inventoryAdjustInput), async (req, res) => {
   const tenant = req.tenant!;
-  requirePermission(tenant.role, 'inventory:adjust');
+  requirePermission(tenant.permissions, 'inventory:adjust');
   const { id } = res.locals.validatedParams as z.infer<typeof treatmentParams>;
   const input = req.body as z.infer<typeof inventoryAdjustInput>;
   const result = await withTenant(tenant.organizationId, async (tx) => {
@@ -1804,7 +1804,7 @@ treatmentsRouter.post('/:id/inventory/adjust', validateParams(treatmentParams), 
 
 treatmentsRouter.patch('/:id/inventory/threshold', validateParams(treatmentParams), validateBody(inventoryThresholdInput), async (req, res) => {
   const tenant = req.tenant!;
-  requirePermission(tenant.role, 'inventory:settings:write');
+  requirePermission(tenant.permissions, 'inventory:settings:write');
   const { id } = res.locals.validatedParams as z.infer<typeof treatmentParams>;
   const input = req.body as z.infer<typeof inventoryThresholdInput>;
   const result = await withTenant(tenant.organizationId, async (tx) => {

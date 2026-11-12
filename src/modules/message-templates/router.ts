@@ -36,7 +36,7 @@ async function findTemplate(tx: Prisma.TransactionClient, tenant: NonNullable<Ex
 
 templatesRouter.get('/', validateQuery(templateListQuery), async (req, res) => {
   const tenant = req.tenant!;
-  requirePermission(tenant.role, 'templates:read');
+  requirePermission(tenant.permissions, 'templates:read');
   const query = res.locals.validatedQuery as z.infer<typeof templateListQuery>;
   const data = await withTenant(tenant.organizationId, async (tx) => {
     const scope = await optionalBranchScope(tx, tenant);
@@ -58,7 +58,7 @@ templatesRouter.get('/', validateQuery(templateListQuery), async (req, res) => {
 
 templatesRouter.post('/', validateBody(templateCreate), async (req, res) => {
   const tenant = req.tenant!;
-  requirePermission(tenant.role, 'templates:write');
+  requirePermission(tenant.permissions, 'templates:write');
   const input = req.body as z.infer<typeof templateCreate>;
   const template = await withTenant(tenant.organizationId, async (tx) => {
     if (input.branch_id && !await canAccessBranch(tx, tenant, input.branch_id)) {
@@ -88,7 +88,7 @@ templatesRouter.post('/', validateBody(templateCreate), async (req, res) => {
 
 templatesRouter.get('/:id', validateParams(templateParams), async (req, res) => {
   const tenant = req.tenant!;
-  requirePermission(tenant.role, 'templates:read');
+  requirePermission(tenant.permissions, 'templates:read');
   const { id } = res.locals.validatedParams as z.infer<typeof templateParams>;
   const template = await withTenant(tenant.organizationId, async (tx) => {
     const found = await findTemplate(tx, tenant, id);
@@ -100,7 +100,7 @@ templatesRouter.get('/:id', validateParams(templateParams), async (req, res) => 
 
 templatesRouter.patch('/:id', validateParams(templateParams), validateBody(templatePatch), async (req, res) => {
   const tenant = req.tenant!;
-  requirePermission(tenant.role, 'templates:write');
+  requirePermission(tenant.permissions, 'templates:write');
   const { id } = res.locals.validatedParams as z.infer<typeof templateParams>;
   const input = req.body as z.infer<typeof templatePatch>;
   const template = await withTenant(tenant.organizationId, async (tx) => {
@@ -138,7 +138,7 @@ templatesRouter.patch('/:id', validateParams(templateParams), validateBody(templ
 
 templatesRouter.delete('/:id', validateParams(templateParams), async (req, res) => {
   const tenant = req.tenant!;
-  requirePermission(tenant.role, 'templates:write');
+  requirePermission(tenant.permissions, 'templates:write');
   const { id } = res.locals.validatedParams as z.infer<typeof templateParams>;
   await withTenant(tenant.organizationId, async (tx) => {
     const current = await findTemplate(tx, tenant, id);
@@ -159,7 +159,7 @@ templatesRouter.delete('/:id', validateParams(templateParams), async (req, res) 
  */
 templatesRouter.post('/:id/test-send', validateParams(templateParams), validateBody(templateTestSend), async (req, res) => {
   const tenant = req.tenant!;
-  requirePermission(tenant.role, 'automation:manage');
+  requirePermission(tenant.permissions, 'automation:manage');
   const { id } = res.locals.validatedParams as z.infer<typeof templateParams>;
   const input = req.body as z.infer<typeof templateTestSend>;
   const prepared = await withTenant(tenant.organizationId, async (tx) => {
