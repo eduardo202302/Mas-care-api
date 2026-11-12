@@ -25,7 +25,7 @@ const elementBase = {
 };
 
 export const labelElement = z.discriminatedUnion('type', [
-  z.object({ type: z.literal('variable'), key: labelVariableKey, showLabel: z.boolean().default(true), ...elementBase }).strict(),
+  z.object({ type: z.literal('variable'), key: labelVariableKey, showLabel: z.boolean().default(true), label: z.string().trim().max(60).optional(), ...elementBase }).strict(),
   z.object({ type: z.literal('text'), text: z.string().trim().min(1).max(200), ...elementBase }).strict(),
   z.object({ type: z.literal('line'), orientation: z.enum(['horizontal', 'vertical']).default('horizontal'), ...elementBase }).strict(),
 ]);
